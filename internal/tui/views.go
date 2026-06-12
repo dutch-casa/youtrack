@@ -451,6 +451,8 @@ func (m model) keyMap() tuiKeyMap {
 	switch m.section {
 	case sectionIssues:
 		return issueKeyMap()
+	case sectionKnowledge:
+		return knowledgeKeyMap()
 	case sectionHelpdesk:
 		return helpdeskKeyMap()
 	case sectionAgile:

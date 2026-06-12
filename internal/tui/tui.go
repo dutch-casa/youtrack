@@ -384,6 +384,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.section == sectionIssues && !m.loading {
 				return m, m.openProjectPrompt()
 			}
+			if m.section == sectionKnowledge && !m.resourcesLoading {
+				return m, m.openProjectPrompt()
+			}
 		case "o":
 			return m, m.openCurrentInBrowser
 		case "i":
@@ -775,6 +778,18 @@ func (m model) updateProjectInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		project := m.selectedProjectFilter()
 		m.closeProjectPrompt()
+		if m.section == sectionKnowledge {
+			m.resourceContextID = project
+			m.resourceSkip = 0
+			m.resourceSelected = 0
+			m.resourceFilter = ""
+			m.clearActionErrors()
+			status := "Loading knowledge base..."
+			if project != "" {
+				status = "Loading knowledge base project " + project + "..."
+			}
+			return m.withResourceListLoading(status)
+		}
 		m.projectFilter = project
 		m.opts.Skip = 0
 		m.selected = 0
@@ -903,7 +918,7 @@ func (m model) issueSearchQuery() string {
 func (m model) loadResources(s section) tea.Cmd {
 	return func() tea.Msg {
 		resources, err := m.resourcesForSection(s, m.resourceSkip)
-		return resourcesMsg{section: s, title: s.title(), kind: resourceKindSection, resources: resources, err: err}
+		return resourcesMsg{section: s, title: m.resourceListTitle(s), kind: resourceKindSection, resources: resources, err: err}
 	}
 }
 
@@ -917,7 +932,7 @@ func (m model) loadAgileSprints(agileID, title string) tea.Cmd {
 func (m model) resourcesForSection(s section, skip int) ([]resourceItem, error) {
 	switch s {
 	case sectionKnowledge:
-		articles, err := m.client.Articles(m.ctx, youtrack.ArticleListOptions{Top: m.opts.Top, Skip: skip})
+		articles, err := m.client.Articles(m.ctx, youtrack.ArticleListOptions{Project: m.resourceContextID, Top: m.opts.Top, Skip: skip})
 		if err != nil {
 			return nil, err
 		}
@@ -951,6 +966,13 @@ func (m model) resourcesForSection(s section, skip int) ([]resourceItem, error) 
 	}
 }
 
+func (m model) resourceListTitle(s section) string {
+	if s == sectionKnowledge && strings.TrimSpace(m.resourceContextID) != "" {
+		return "Knowledge Base: " + strings.TrimSpace(m.resourceContextID)
+	}
+	return s.title()
+}
+
 func (m model) switchSection(s section) (tea.Model, tea.Cmd) {
 	if m.section == s {
 		return m, nil
@@ -980,11 +1002,13 @@ func (m model) withSectionLoading(status string) (tea.Model, tea.Cmd) {
 	if m.section == sectionIssues {
 		return m.withIssueListLoading(status)
 	}
+	if m.section != sectionKnowledge {
+		m.resourceContextID = ""
+	}
 	m.resourceSkip = 0
-	m.resourceContextID = ""
 	m.resourcesLoading = true
 	m.resourcesErr = nil
-	m.resourceTitle = m.section.title()
+	m.resourceTitle = m.resourceListTitle(m.section)
 	m.resourceKind = resourceKindSection
 	m.resourceSelected = 0
 	m.detail.GotoTop()

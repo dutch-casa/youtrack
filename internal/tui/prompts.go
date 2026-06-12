@@ -55,10 +55,10 @@ func (m *model) openQueryPrompt() tea.Cmd {
 func (m *model) openProjectPrompt() tea.Cmd {
 	m.inputMode = modeProject
 	resetAndFocus(&m.projectInput)
-	m.projectInput.SetValue(m.projectFilter)
+	m.projectInput.SetValue(m.currentProjectPromptValue())
 	m.clearActionErrors()
 	m.status = ""
-	m.projectOptions = filterProjectOptions(m.allProjectOptions, m.projectFilter)
+	m.projectOptions = filterProjectOptions(m.allProjectOptions, m.projectInput.Value())
 	m.projectOptionSelected = 0
 	m.projectOptionsErr = nil
 	if len(m.allProjectOptions) == 0 {
@@ -66,6 +66,13 @@ func (m *model) openProjectPrompt() tea.Cmd {
 		return m.loadProjectOptions
 	}
 	return textinput.Blink
+}
+
+func (m model) currentProjectPromptValue() string {
+	if m.section == sectionKnowledge {
+		return m.resourceContextID
+	}
+	return m.projectFilter
 }
 
 func (m *model) openIssuePrompt() tea.Cmd {

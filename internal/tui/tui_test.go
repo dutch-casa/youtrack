@@ -390,6 +390,53 @@ func TestProjectSelectorLoadsAndAppliesProject(t *testing.T) {
 	}
 }
 
+func TestKnowledgeProjectSelectorScopesArticles(t *testing.T) {
+	var requests []youtrack.ArticleListOptions
+	client := fakeClient{
+		articleRequests: &requests,
+		articles:        []youtrack.Article{{IDReadable: "SUP-A-1", Summary: "Runbook"}},
+		projects: []youtrack.Project{
+			{ShortName: "ABC", Name: "Alpha"},
+			{ShortName: "SUP", Name: "Support"},
+		},
+	}
+	m := newModel(context.Background(), client, Options{Top: 25})
+	m.section = sectionKnowledge
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("knowledge project load command = nil")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	for _, r := range "sup" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(model)
+	}
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("knowledge project apply command = nil")
+	}
+	if m.resourceContextID != "SUP" {
+		t.Fatalf("resourceContextID = %q, want SUP", m.resourceContextID)
+	}
+	msg := cmd().(resourcesMsg)
+	if msg.err != nil {
+		t.Fatalf("article load error = %v", msg.err)
+	}
+	if len(requests) != 1 || requests[0].Project != "SUP" || requests[0].Top != 25 {
+		t.Fatalf("article requests = %#v, want project-scoped article request", requests)
+	}
+	if msg.title != "Knowledge Base: SUP" {
+		t.Fatalf("title = %q, want scoped knowledge title", msg.title)
+	}
+	if len(msg.resources) != 1 || msg.resources[0].ID != "SUP-A-1" {
+		t.Fatalf("resources = %#v, want scoped article", msg.resources)
+	}
+}
+
 func TestResourceSearchFiltersLive(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	m.section = sectionKnowledge
@@ -628,6 +675,16 @@ func TestAgileSprintFooterHidesBoardDrilldownAction(t *testing.T) {
 	footer := stripANSI(m.footer())
 	if strings.Contains(footer, "enter sprints") {
 		t.Fatalf("footer = %q, want sprint drilldown action hidden for sprint resources", footer)
+	}
+}
+
+func TestKnowledgeFooterShowsProjectFilter(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionKnowledge
+
+	footer := stripANSI(m.footer())
+	if !strings.Contains(footer, "P project") {
+		t.Fatalf("footer = %q, want project filter action", footer)
 	}
 }
 
@@ -1650,6 +1707,34 @@ func TestSprintPagingUsesSelectedBoardContext(t *testing.T) {
 	_ = cmd()
 	if len(sprintRequests) != 1 || sprintRequests[0].AgileID != "120-2" || sprintRequests[0].Skip != 10 || sprintRequests[0].Top != 10 {
 		t.Fatalf("sprint requests = %#v, want sprint page request for selected board", sprintRequests)
+	}
+}
+
+func TestKnowledgeRefreshKeepsProjectScope(t *testing.T) {
+	var articleRequests []youtrack.ArticleListOptions
+	m := newModel(context.Background(), fakeClient{
+		articles:        []youtrack.Article{{IDReadable: "SUP-A-1", Summary: "Runbook"}},
+		articleRequests: &articleRequests,
+	}, Options{Top: 10})
+	m.section = sectionKnowledge
+	m.resourceContextID = "SUP"
+	m.resourceTitle = "Knowledge Base: SUP"
+	m.resourceSkip = 20
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("knowledge refresh command = nil")
+	}
+	if m.resourceContextID != "SUP" {
+		t.Fatalf("resourceContextID = %q, want preserved project scope", m.resourceContextID)
+	}
+	if m.resourceSkip != 0 {
+		t.Fatalf("resourceSkip = %d, want refresh reset to first scoped page", m.resourceSkip)
+	}
+	_ = cmd()
+	if len(articleRequests) != 1 || articleRequests[0].Project != "SUP" || articleRequests[0].Skip != 0 {
+		t.Fatalf("article requests = %#v, want scoped refresh request", articleRequests)
 	}
 }
 

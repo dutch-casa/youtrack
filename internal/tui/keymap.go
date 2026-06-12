@@ -57,6 +57,12 @@ func helpdeskKeyMap() tuiKeyMap {
 	return keys
 }
 
+func knowledgeKeyMap() tuiKeyMap {
+	keys := resourceKeyMap()
+	keys.Project = key.NewBinding(key.WithKeys("P"), key.WithHelp("P", "project"))
+	return keys
+}
+
 func agileKeyMap() tuiKeyMap {
 	keys := resourceKeyMap()
 	keys.Action = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "sprints"))
