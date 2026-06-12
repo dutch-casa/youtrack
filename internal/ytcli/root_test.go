@@ -5,6 +5,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -19,7 +20,7 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "Agent-friendly YouTrack CLI") {
 		t.Fatalf("help output = %q", out.String())
 	}
-	for _, command := range []string{"projects", "users", "commands"} {
+	for _, command := range []string{"projects", "users", "commands", "attachments"} {
 		if !strings.Contains(out.String(), command) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}
@@ -115,5 +116,62 @@ func TestWorkItemsAddRequiresPositiveMinutes(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--minutes") {
 		t.Fatalf("Execute() error = %q, want minutes guidance", err.Error())
+	}
+}
+
+func TestAttachmentsAddRequiresFile(t *testing.T) {
+	err := Execute(context.Background(), []string{"attachments", "add", "ABC-1"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want file validation")
+	}
+	if !strings.Contains(err.Error(), "--file") {
+		t.Fatalf("Execute() error = %q, want file guidance", err.Error())
+	}
+}
+
+func TestAttachmentsAddUploadsFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/attachments" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+			t.Fatalf("Content-Type = %q, want multipart form", r.Header.Get("Content-Type"))
+		}
+		file, header, err := r.FormFile("upload")
+		if err != nil {
+			t.Fatalf("upload field: %v", err)
+		}
+		defer file.Close()
+		if header.Filename != "evidence.txt" {
+			t.Fatalf("filename = %q", header.Filename)
+		}
+		body := new(bytes.Buffer)
+		if _, err := body.ReadFrom(file); err != nil {
+			t.Fatalf("read upload: %v", err)
+		}
+		if body.String() != "evidence" {
+			t.Fatalf("upload body = %q", body.String())
+		}
+		_, _ = w.Write([]byte(`[{"id":"134-1","name":"evidence.txt","size":8}]`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	path := filepath.Join(t.TempDir(), "evidence.txt")
+	if err := os.WriteFile(path, []byte("evidence"), 0o600); err != nil {
+		t.Fatalf("write temp file: %v", err)
+	}
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"attachments", "add", "ABC-1", "--file", path,
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "evidence.txt") {
+		t.Fatalf("output = %q, want attachment name", out.String())
 	}
 }

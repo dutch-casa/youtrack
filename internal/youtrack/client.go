@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/url"
 	"strings"
@@ -87,6 +88,20 @@ type WorkItem struct {
 	Creator  User          `json:"creator,omitempty"`
 }
 
+type Attachment struct {
+	ID           string `json:"id"`
+	Name         string `json:"name"`
+	Author       User   `json:"author,omitempty"`
+	Created      int64  `json:"created,omitempty"`
+	Updated      int64  `json:"updated,omitempty"`
+	Size         int64  `json:"size,omitempty"`
+	Extension    string `json:"extension,omitempty"`
+	MimeType     string `json:"mimeType,omitempty"`
+	MetaData     string `json:"metaData,omitempty"`
+	URL          string `json:"url,omitempty"`
+	ThumbnailURL string `json:"thumbnailURL,omitempty"`
+}
+
 type IssueListOptions struct {
 	Query string
 	Top   int
@@ -136,6 +151,22 @@ type AddWorkItemRequest struct {
 	AuthorID   string
 	DateMillis int64
 	Mute       bool
+}
+
+type AttachmentListOptions struct {
+	IssueID string
+	Top     int
+	Skip    int
+}
+
+type AttachmentFile struct {
+	Name    string
+	Content io.Reader
+}
+
+type UploadAttachmentsRequest struct {
+	IssueID string
+	Files   []AttachmentFile
 }
 
 type APIError struct {
@@ -320,6 +351,57 @@ func (c *Client) AddWorkItem(ctx context.Context, req AddWorkItemRequest) (WorkI
 	return item, err
 }
 
+func (c *Client) Attachments(ctx context.Context, opts AttachmentListOptions) ([]Attachment, error) {
+	if strings.TrimSpace(opts.IssueID) == "" {
+		return nil, errors.New("issue id is required")
+	}
+	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
+	values.Set("fields", attachmentFields)
+
+	var attachments []Attachment
+	err := c.get(ctx, "/api/issues/"+url.PathEscape(opts.IssueID)+"/attachments", values, &attachments)
+	return attachments, err
+}
+
+func (c *Client) UploadAttachments(ctx context.Context, req UploadAttachmentsRequest) ([]Attachment, error) {
+	if strings.TrimSpace(req.IssueID) == "" {
+		return nil, errors.New("issue id is required")
+	}
+	if len(req.Files) == 0 {
+		return nil, errors.New("at least one attachment file is required")
+	}
+
+	var body bytes.Buffer
+	writer := multipart.NewWriter(&body)
+	for i, file := range req.Files {
+		if strings.TrimSpace(file.Name) == "" {
+			_ = writer.Close()
+			return nil, fmt.Errorf("attachment file %d name is required", i+1)
+		}
+		if file.Content == nil {
+			_ = writer.Close()
+			return nil, fmt.Errorf("attachment file %q content is required", file.Name)
+		}
+		part, err := writer.CreateFormFile("upload", file.Name)
+		if err != nil {
+			_ = writer.Close()
+			return nil, fmt.Errorf("create multipart part for %q: %w", file.Name, err)
+		}
+		if _, err := io.Copy(part, file.Content); err != nil {
+			_ = writer.Close()
+			return nil, fmt.Errorf("copy attachment %q: %w", file.Name, err)
+		}
+	}
+	if err := writer.Close(); err != nil {
+		return nil, fmt.Errorf("close multipart body: %w", err)
+	}
+
+	values := url.Values{"fields": {attachmentFields}}
+	var attachments []Attachment
+	err := c.postMultipart(ctx, "/api/issues/"+url.PathEscape(req.IssueID)+"/attachments", values, writer.FormDataContentType(), &body, &attachments)
+	return attachments, err
+}
+
 func (c *Client) ApplyCommand(ctx context.Context, req ApplyCommandRequest) (CommandResult, error) {
 	if strings.TrimSpace(req.IssueID) == "" {
 		return CommandResult{}, errors.New("issue id is required")
@@ -385,6 +467,15 @@ func (c *Client) post(ctx context.Context, path string, values url.Values, src a
 		return err
 	}
 	req.Header.Set("Content-Type", "application/json")
+	return c.do(req, dst)
+}
+
+func (c *Client) postMultipart(ctx context.Context, path string, values url.Values, contentType string, body io.Reader, dst any) error {
+	req, err := c.newRequest(ctx, http.MethodPost, path, values, body)
+	if err != nil {
+		return err
+	}
+	req.Header.Set("Content-Type", contentType)
 	return c.do(req, dst)
 }
 
@@ -458,6 +549,7 @@ const issueFields = "id,idReadable,summary,description,resolved,project(shortNam
 const projectFields = "id,shortName,name,archived,leader(id,login,name,fullName,email)"
 const userFields = "id,login,name,fullName,email,online,banned"
 const workItemFields = "id,text,date,duration(id,minutes,presentation),type(id,name),author(id,login,name,fullName,email),creator(id,login,name,fullName,email)"
+const attachmentFields = "id,name,author(id,login,name,fullName,email),created,updated,size,extension,mimeType,metaData,url,thumbnailURL"
 
 func pageValues(opts PageOptions) url.Values {
 	values := url.Values{}

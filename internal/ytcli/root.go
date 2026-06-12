@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/dutchcaz/youtrack/internal/auth"
@@ -67,6 +68,7 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.issuesCommand())
 	cmd.AddCommand(a.commentsCommand())
 	cmd.AddCommand(a.workItemsCommand())
+	cmd.AddCommand(a.attachmentsCommand())
 	cmd.AddCommand(a.commandsCommand())
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
@@ -519,6 +521,86 @@ func (a *app) workItemsCommand() *cobra.Command {
 		Use:     "work-items",
 		Aliases: []string{"work-item", "time"},
 		Short:   "Work with issue time tracking",
+	}
+	cmd.AddCommand(list, add)
+	return cmd
+}
+
+func (a *app) attachmentsCommand() *cobra.Command {
+	var top int
+	var skip int
+	list := &cobra.Command{
+		Use:   "list ISSUE",
+		Short: "List issue attachments",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			attachments, err := client.Attachments(cmd.Context(), youtrack.AttachmentListOptions{
+				IssueID: args[0],
+				Top:     top,
+				Skip:    skip,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, attachments)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum attachments to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of attachments to skip")
+
+	var paths []string
+	add := &cobra.Command{
+		Use:   "add ISSUE",
+		Short: "Attach files to an issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if len(paths) == 0 {
+				return errors.New("--file is required")
+			}
+			files := make([]*os.File, 0, len(paths))
+			defer func() {
+				for _, file := range files {
+					_ = file.Close()
+				}
+			}()
+
+			attachments := make([]youtrack.AttachmentFile, 0, len(paths))
+			for _, path := range paths {
+				file, err := os.Open(path)
+				if err != nil {
+					return fmt.Errorf("open attachment %q: %w", path, err)
+				}
+				files = append(files, file)
+				attachments = append(attachments, youtrack.AttachmentFile{
+					Name:    filepath.Base(path),
+					Content: file,
+				})
+			}
+
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			uploaded, err := client.UploadAttachments(cmd.Context(), youtrack.UploadAttachmentsRequest{
+				IssueID: args[0],
+				Files:   attachments,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, uploaded)
+		},
+	}
+	add.Flags().StringArrayVarP(&paths, "file", "f", nil, "file to attach; repeat for multiple files")
+
+	cmd := &cobra.Command{
+		Use:     "attachments",
+		Aliases: []string{"attachment", "files"},
+		Short:   "Work with issue attachments",
 	}
 	cmd.AddCommand(list, add)
 	return cmd

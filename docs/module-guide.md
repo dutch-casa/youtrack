@@ -9,6 +9,7 @@ See also:
 - [0005 Command API as Workflow Bridge](adr/0005-command-api-as-workflow-bridge.md)
 - [0006 Centralized Text Input](adr/0006-centralized-text-input.md)
 - [0007 Typed Time Tracking](adr/0007-typed-time-tracking.md)
+- [0008 Typed Attachments](adr/0008-typed-attachments.md)
 
 ## `internal/auth`
 
@@ -20,7 +21,7 @@ Role: Callers ask for usable credentials. The module decides whether to use envi
 
 Secret: This module hides the YouTrack REST API wire shape.
 
-Role: Callers use typed operations for common issue, comment, and user actions. The module owns endpoint paths, query fields, bearer-token headers, and API error decoding.
+Role: Callers use typed operations for common issue, comment, attachment, and user actions. The module owns endpoint paths, query fields, multipart upload shape, bearer-token headers, and API error decoding.
 
 ## `internal/ytcli`
 

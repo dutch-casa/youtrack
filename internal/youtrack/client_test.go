@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"io"
+	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -248,6 +249,73 @@ func TestAddWorkItemRequestBody(t *testing.T) {
 	}
 }
 
+func TestAttachmentsRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/attachments" {
+			t.Fatalf("path = %s, want attachments path", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$top"); got != "10" {
+			t.Fatalf("$top = %q", got)
+		}
+		if fields := r.URL.Query().Get("fields"); !strings.Contains(fields, "thumbnailURL") {
+			t.Fatalf("fields = %q, want attachment fields", fields)
+		}
+		_, _ = w.Write([]byte(`[{"id":"134-1","name":"screenshot.png","size":123,"mimeType":"image/png","author":{"login":"jane"}}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	attachments, err := client.Attachments(context.Background(), AttachmentListOptions{IssueID: "ABC-1", Top: 10})
+	if err != nil {
+		t.Fatalf("Attachments() error = %v", err)
+	}
+	if len(attachments) != 1 || attachments[0].Name != "screenshot.png" {
+		t.Fatalf("Attachments() = %#v", attachments)
+	}
+}
+
+func TestUploadAttachmentsRequestBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/attachments" {
+			t.Fatalf("path = %s, want attachments path", r.URL.Path)
+		}
+		if !strings.HasPrefix(r.Header.Get("Content-Type"), "multipart/form-data; boundary=") {
+			t.Fatalf("Content-Type = %q, want multipart form", r.Header.Get("Content-Type"))
+		}
+		reader, err := r.MultipartReader()
+		if err != nil {
+			t.Fatalf("multipart reader: %v", err)
+		}
+		parts := readMultipartParts(t, reader)
+		if len(parts) != 2 {
+			t.Fatalf("parts = %#v, want 2", parts)
+		}
+		if parts[0].field != "upload" || parts[0].filename != "one.txt" || parts[0].body != "one" {
+			t.Fatalf("first part = %#v", parts[0])
+		}
+		if parts[1].field != "upload" || parts[1].filename != "two.txt" || parts[1].body != "two" {
+			t.Fatalf("second part = %#v", parts[1])
+		}
+		_, _ = w.Write([]byte(`[{"id":"134-1","name":"one.txt"},{"id":"134-2","name":"two.txt"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	attachments, err := client.UploadAttachments(context.Background(), UploadAttachmentsRequest{
+		IssueID: "ABC-1",
+		Files: []AttachmentFile{
+			{Name: "one.txt", Content: strings.NewReader("one")},
+			{Name: "two.txt", Content: strings.NewReader("two")},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UploadAttachments() error = %v", err)
+	}
+	if len(attachments) != 2 || attachments[1].Name != "two.txt" {
+		t.Fatalf("UploadAttachments() = %#v", attachments)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -292,4 +360,41 @@ func TestClientValidatesInputs(t *testing.T) {
 	if _, err := client.AddWorkItem(context.Background(), AddWorkItemRequest{IssueID: "ABC-1"}); err == nil {
 		t.Fatal("AddWorkItem() error = nil, want minutes validation")
 	}
+	if _, err := client.Attachments(context.Background(), AttachmentListOptions{}); err == nil {
+		t.Fatal("Attachments() error = nil, want issue id validation")
+	}
+	if _, err := client.UploadAttachments(context.Background(), UploadAttachmentsRequest{IssueID: "ABC-1"}); err == nil {
+		t.Fatal("UploadAttachments() error = nil, want file validation")
+	}
+}
+
+type multipartPart struct {
+	field    string
+	filename string
+	body     string
+}
+
+func readMultipartParts(t *testing.T, reader *multipart.Reader) []multipartPart {
+	t.Helper()
+
+	var parts []multipartPart
+	for {
+		part, err := reader.NextPart()
+		if err == io.EOF {
+			break
+		}
+		if err != nil {
+			t.Fatalf("next multipart part: %v", err)
+		}
+		body, err := io.ReadAll(part)
+		if err != nil {
+			t.Fatalf("read multipart part: %v", err)
+		}
+		parts = append(parts, multipartPart{
+			field:    part.FormName(),
+			filename: part.FileName(),
+			body:     string(body),
+		})
+	}
+	return parts
 }

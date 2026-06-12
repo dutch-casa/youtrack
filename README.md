@@ -41,6 +41,8 @@ yt comments add ABC-123 --text 'I can reproduce this.'
 yt comments add ABC-123 --text-stdin < ./notes.md
 yt work-items list ABC-123
 yt work-items add ABC-123 --minutes 45 --text 'implementation'
+yt attachments list ABC-123
+yt attachments add ABC-123 --file ./screenshot.png
 yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'
 yt raw /api/admin/projects
 ```

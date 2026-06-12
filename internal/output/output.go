@@ -62,6 +62,14 @@ func writeTable(w io.Writer, value any) error {
 	case youtrack.WorkItem:
 		fmt.Fprintln(tw, "ID\tMINUTES\tTYPE\tAUTHOR\tTEXT")
 		fmt.Fprintf(tw, "%s\t%d\t%s\t%s\t%s\n", rows.ID, rows.Duration.Minutes, rows.Type.Name, displayName(rows.Author), rows.Text)
+	case []youtrack.Attachment:
+		fmt.Fprintln(tw, "ID\tNAME\tSIZE\tTYPE\tAUTHOR")
+		for _, attachment := range rows {
+			fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", attachment.ID, attachment.Name, attachment.Size, attachment.MimeType, displayName(attachment.Author))
+		}
+	case youtrack.Attachment:
+		fmt.Fprintln(tw, "ID\tNAME\tSIZE\tTYPE\tAUTHOR")
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", rows.ID, rows.Name, rows.Size, rows.MimeType, displayName(rows.Author))
 	case youtrack.CommandResult:
 		fmt.Fprintln(tw, "QUERY\tISSUES")
 		fmt.Fprintf(tw, "%s\t%d\n", rows.Query, len(rows.Issues))
