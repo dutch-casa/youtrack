@@ -78,6 +78,12 @@ type CreateIssueRequest struct {
 	Description      string
 }
 
+type UpdateIssueRequest struct {
+	ID          string
+	Summary     *string
+	Description *string
+}
+
 type PageOptions struct {
 	Top  int
 	Skip int
@@ -180,6 +186,28 @@ func (c *Client) CreateIssue(ctx context.Context, req CreateIssueRequest) (Issue
 
 	var issue Issue
 	err := c.post(ctx, "/api/issues", url.Values{
+		"fields": {issueFields},
+	}, body, &issue)
+	return issue, err
+}
+
+func (c *Client) UpdateIssue(ctx context.Context, req UpdateIssueRequest) (Issue, error) {
+	if strings.TrimSpace(req.ID) == "" {
+		return Issue{}, errors.New("issue id is required")
+	}
+	if req.Summary == nil && req.Description == nil {
+		return Issue{}, errors.New("at least one issue field is required")
+	}
+	body := make(map[string]any, 2)
+	if req.Summary != nil {
+		body["summary"] = *req.Summary
+	}
+	if req.Description != nil {
+		body["description"] = *req.Description
+	}
+
+	var issue Issue
+	err := c.post(ctx, "/api/issues/"+url.PathEscape(req.ID), url.Values{
 		"fields": {issueFields},
 	}, body, &issue)
 	return issue, err

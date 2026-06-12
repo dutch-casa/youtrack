@@ -69,6 +69,36 @@ func TestCreateIssueRequestBody(t *testing.T) {
 	}
 }
 
+func TestUpdateIssueRequestBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1" {
+			t.Fatalf("path = %s, want /api/issues/ABC-1", r.URL.Path)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode request: %v", err)
+		}
+		if payload["summary"] != "Updated" {
+			t.Fatalf("summary = %v", payload["summary"])
+		}
+		if _, ok := payload["description"]; ok {
+			t.Fatalf("description was sent unexpectedly: %#v", payload)
+		}
+		_, _ = w.Write([]byte(`{"id":"1","idReadable":"ABC-1","summary":"Updated","project":{"shortName":"ABC"}}`))
+	}))
+	defer server.Close()
+
+	summary := "Updated"
+	client := NewClient(server.URL, "perm:test", server.Client())
+	issue, err := client.UpdateIssue(context.Background(), UpdateIssueRequest{ID: "ABC-1", Summary: &summary})
+	if err != nil {
+		t.Fatalf("UpdateIssue() error = %v", err)
+	}
+	if issue.Summary != "Updated" {
+		t.Fatalf("UpdateIssue() = %#v", issue)
+	}
+}
+
 func TestProjectsRequestShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/admin/projects" {
@@ -181,6 +211,9 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.CreateIssue(context.Background(), CreateIssueRequest{}); err == nil {
 		t.Fatal("CreateIssue() error = nil, want request validation")
+	}
+	if _, err := client.UpdateIssue(context.Background(), UpdateIssueRequest{ID: "ABC-1"}); err == nil {
+		t.Fatal("UpdateIssue() error = nil, want field validation")
 	}
 	if _, err := client.AddComment(context.Background(), "ABC-1", ""); err == nil {
 		t.Fatal("AddComment() error = nil, want text validation")

@@ -34,6 +34,7 @@ yt users list
 yt issues list --query 'project: ABC #Unresolved' --top 20
 yt issues show ABC-123
 yt issues create --project ABC --summary 'Fix login redirect' --description 'Observed in staging'
+yt issues update ABC-123 --summary 'Fix login redirect after SSO'
 yt comments list ABC-123
 yt comments add ABC-123 --text 'I can reproduce this.'
 yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'

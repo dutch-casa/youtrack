@@ -294,12 +294,52 @@ func (a *app) issuesCommand() *cobra.Command {
 	create.Flags().StringVarP(&summary, "summary", "s", "", "issue summary")
 	create.Flags().StringVarP(&description, "description", "d", "", "issue description")
 
+	var updateSummary string
+	var updateDescription string
+	update := &cobra.Command{
+		Use:   "update ISSUE",
+		Short: "Update issue summary or description",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			summaryChanged := cmd.Flags().Changed("summary")
+			descriptionChanged := cmd.Flags().Changed("description")
+			if !summaryChanged && !descriptionChanged {
+				return errors.New("at least one of --summary or --description is required")
+			}
+
+			var summaryValue *string
+			if summaryChanged {
+				summaryValue = &updateSummary
+			}
+			var descriptionValue *string
+			if descriptionChanged {
+				descriptionValue = &updateDescription
+			}
+
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			issue, err := client.UpdateIssue(cmd.Context(), youtrack.UpdateIssueRequest{
+				ID:          args[0],
+				Summary:     summaryValue,
+				Description: descriptionValue,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, issue)
+		},
+	}
+	update.Flags().StringVarP(&updateSummary, "summary", "s", "", "new issue summary")
+	update.Flags().StringVarP(&updateDescription, "description", "d", "", "new issue description")
+
 	cmd := &cobra.Command{
 		Use:     "issues",
 		Aliases: []string{"issue"},
 		Short:   "Work with issues",
 	}
-	cmd.AddCommand(list, show, create)
+	cmd.AddCommand(list, show, create, update)
 	return cmd
 }
 

@@ -67,3 +67,14 @@ func TestMissingAuthNonInteractiveReturnsSetupError(t *testing.T) {
 		t.Fatalf("Execute() error = %q, want setup command", err.Error())
 	}
 }
+
+func TestIssuesUpdateRequiresChangedField(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	err := Execute(context.Background(), []string{"--config", config, "issues", "update", "ABC-1"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want validation error")
+	}
+	if !strings.Contains(err.Error(), "--summary") {
+		t.Fatalf("Execute() error = %q, want field guidance", err.Error())
+	}
+}
