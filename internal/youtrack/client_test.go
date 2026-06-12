@@ -7,6 +7,7 @@ import (
 	"mime/multipart"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 )
@@ -452,6 +453,38 @@ func TestRawRequestHeaders(t *testing.T) {
 	}
 }
 
+func TestRawRequestMergesQueryParameters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query()["existing"]; len(got) != 1 || got[0] != "true" {
+			t.Fatalf("existing query = %#v, want true", got)
+		}
+		if got := r.URL.Query()["fields"]; len(got) != 1 || got[0] != "id,idReadable" {
+			t.Fatalf("fields query = %#v, want id,idReadable", got)
+		}
+		if got := r.URL.Query()["tag"]; len(got) != 2 || got[0] != "agent" || got[1] != "urgent" {
+			t.Fatalf("tag query = %#v, want repeated raw query values", got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	data, err := client.Raw(context.Background(), RawRequest{
+		Method: http.MethodGet,
+		Path:   "/api/issues?existing=true",
+		Query: url.Values{
+			"fields": {"id,idReadable"},
+			"tag":    {"agent", "urgent"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Raw() error = %v", err)
+	}
+	if string(data) != `{"ok":true}` {
+		t.Fatalf("Raw() = %s, want raw response", data)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -537,6 +570,13 @@ func TestClientValidatesInputs(t *testing.T) {
 		Headers: http.Header{"Bad Header": {"value"}},
 	}); err == nil {
 		t.Fatal("Raw() error = nil, want header name validation")
+	}
+	if _, err := client.Raw(context.Background(), RawRequest{
+		Method: http.MethodGet,
+		Path:   "/api/issues",
+		Query:  url.Values{"": {"value"}},
+	}); err == nil {
+		t.Fatal("Raw() error = nil, want query name validation")
 	}
 }
 

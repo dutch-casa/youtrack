@@ -375,6 +375,48 @@ func TestRawSendsCustomHeaders(t *testing.T) {
 	}
 }
 
+func TestRawSendsQueryParameters(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if got := r.URL.Query()["fields"]; len(got) != 1 || got[0] != "id,idReadable" {
+			t.Fatalf("fields query = %#v, want id,idReadable", got)
+		}
+		if got := r.URL.Query()["tag"]; len(got) != 2 || got[0] != "agent" || got[1] != "urgent" {
+			t.Fatalf("tag query = %#v, want repeated values", got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/issues", "--query", "fields=id,idReadable", "-q", "tag=agent", "-q", "tag=urgent",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestRawRejectsInvalidQueryBeforeAuth(t *testing.T) {
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/issues", "--query", "fields",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want query validation")
+	}
+	if !strings.Contains(err.Error(), "name=value") {
+		t.Fatalf("Execute() error = %q, want query shape guidance", err.Error())
+	}
+	if strings.Contains(err.Error(), "yt auth login") {
+		t.Fatalf("Execute() error = %q, parsed query after auth", err.Error())
+	}
+}
+
 func TestRawRejectsManagedHeadersBeforeAuth(t *testing.T) {
 	tests := []struct {
 		name string
@@ -413,6 +455,16 @@ func TestParseRawHeadersProperties(t *testing.T) {
 	property := func(value string) bool {
 		headers, err := parseRawHeaders([]string{"X-Agent-Trace: " + value})
 		return err == nil && headers.Get("X-Agent-Trace") == strings.TrimSpace(value)
+	}
+	if err := quick.Check(property, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestParseRawQueryProperties(t *testing.T) {
+	property := func(value string) bool {
+		query, err := parseRawQuery([]string{"fields=" + value})
+		return err == nil && len(query["fields"]) == 1 && query["fields"][0] == value
 	}
 	if err := quick.Check(property, nil); err != nil {
 		t.Fatal(err)

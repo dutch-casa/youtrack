@@ -228,6 +228,7 @@ type IssueLinkListOptions struct {
 type RawRequest struct {
 	Method      string
 	Path        string
+	Query       url.Values
 	Headers     http.Header
 	ContentType string
 	Body        io.Reader
@@ -565,7 +566,7 @@ func (c *Client) Raw(ctx context.Context, raw RawRequest) (json.RawMessage, erro
 		return nil, errors.New("raw request path is required")
 	}
 
-	req, err := c.newRequest(ctx, strings.ToUpper(raw.Method), raw.Path, nil, raw.Body)
+	req, err := c.newRequest(ctx, strings.ToUpper(raw.Method), raw.Path, raw.Query, raw.Body)
 	if err != nil {
 		return nil, err
 	}
@@ -680,7 +681,16 @@ func (c *Client) newRequest(ctx context.Context, method, path string, values url
 		return nil, fmt.Errorf("parse endpoint: %w", err)
 	}
 	if len(values) > 0 {
-		endpoint.RawQuery = values.Encode()
+		query := endpoint.Query()
+		for name, entries := range values {
+			if strings.TrimSpace(name) == "" {
+				return nil, errors.New("query parameter name is required")
+			}
+			for _, entry := range entries {
+				query.Add(name, entry)
+			}
+		}
+		endpoint.RawQuery = query.Encode()
 	}
 	req, err := http.NewRequestWithContext(ctx, method, endpoint.String(), body)
 	if err != nil {

@@ -51,6 +51,7 @@ yt raw /api/admin/projects
 yt raw /api/issues --method POST --body-file ./issue.json
 yt raw /api/custom --method PATCH --content-type text/plain --body 'plain text'
 yt raw /api/custom --header 'Accept: application/xml' --header 'X-YouTrack-Trace: agent-run-1'
+yt raw /api/issues --query 'fields=id,idReadable,summary' --query '$top=10'
 ```
 
 JSON is the default. Use `--format table` for human-readable output.
@@ -59,7 +60,7 @@ JSON is the default. Use `--format table` for human-readable output.
 
 For long generated text, description and comment commands accept explicit file/stdin sources such as `--description-file`, `--description-stdin`, `--text-file`, `--text-stdin`, `--comment-file`, and `--comment-stdin`.
 
-For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large bodies. Raw requests default body content to `application/json`; use `--content-type` when a long-tail endpoint expects a different media type. Use repeated `--header` or `-H` flags for endpoint-specific headers. `Authorization` remains managed by auth, and `Content-Type` remains managed by `--content-type`.
+For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large bodies. Raw requests default body content to `application/json`; use `--content-type` when a long-tail endpoint expects a different media type. Use repeated `--header` or `-H` flags for endpoint-specific headers and repeated `--query` or `-q` flags for query parameters. `Authorization` remains managed by auth, and `Content-Type` remains managed by `--content-type`.
 
 ## Interactive Mode
 

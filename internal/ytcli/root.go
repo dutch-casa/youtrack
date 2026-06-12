@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"net/url"
 	"os"
 	"path/filepath"
 	"strings"
@@ -763,6 +764,7 @@ func (a *app) rawCommand() *cobra.Command {
 	var bodyFile string
 	var bodyStdin bool
 	var headers []string
+	var query []string
 	cmd := &cobra.Command{
 		Use:   "raw PATH",
 		Short: "Call a YouTrack REST path and print the raw response",
@@ -786,6 +788,10 @@ func (a *app) rawCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			parsedQuery, err := parseRawQuery(query)
+			if err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -793,6 +799,7 @@ func (a *app) rawCommand() *cobra.Command {
 			data, err := client.Raw(cmd.Context(), youtrack.RawRequest{
 				Method:      method,
 				Path:        args[0],
+				Query:       parsedQuery,
 				Headers:     parsedHeaders,
 				ContentType: contentType,
 				Body:        reader,
@@ -810,7 +817,24 @@ func (a *app) rawCommand() *cobra.Command {
 	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read request body from file")
 	cmd.Flags().BoolVar(&bodyStdin, "body-stdin", false, "read request body from stdin")
 	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "request header as 'Name: value'; repeat for multiple headers")
+	cmd.Flags().StringArrayVarP(&query, "query", "q", nil, "query parameter as name=value; repeat for multiple values")
 	return cmd
+}
+
+func parseRawQuery(values []string) (url.Values, error) {
+	query := make(url.Values)
+	for _, raw := range values {
+		name, value, ok := strings.Cut(raw, "=")
+		if !ok {
+			return nil, fmt.Errorf("raw query %q must be in name=value form", raw)
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, errors.New("raw query name is required")
+		}
+		query.Add(name, value)
+	}
+	return query, nil
 }
 
 func parseRawHeaders(values []string) (http.Header, error) {
