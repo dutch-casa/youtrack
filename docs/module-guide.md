@@ -37,6 +37,7 @@ See also:
 - [0033 Top-Level Upgrade Command](adr/0033-top-level-upgrade-command.md)
 - [0034 Product Surface Resource Substrate](adr/0034-product-surface-resource-substrate.md)
 - [0035 Terminal Markdown and Help Rendering](adr/0035-terminal-markdown-and-help-rendering.md)
+- [0036 Issue Signal Panel](adr/0036-issue-signal-panel.md)
 
 ## `internal/auth`
 
@@ -66,4 +67,4 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 Secret: This module hides the terminal interaction state for browsing YouTrack.
 
-Role: It owns keyboard and mouse bindings, layout, section state, selection state, lazy-loaded issue panes, shared resource browsing, fzf-style local filtering, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, resource projection owns how typed YouTrack entities become list/detail rows, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, Markdown/formatting code owns terminal-safe text projection, Bubbles help owns keybinding footer presentation, and styles own the restrained YouTrack-like terminal skin.
+Role: It owns keyboard and mouse bindings, layout, section state, selection state, lazy-loaded issue panes, shared resource browsing, fzf-style local filtering, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, resource projection owns how typed YouTrack entities become list/detail rows, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals and color meanings, Markdown/formatting code owns terminal-safe text projection, Bubbles help owns keybinding footer presentation, and styles own the restrained YouTrack-like terminal skin.

@@ -266,15 +266,11 @@ func (m model) issueDetail(width int) string {
 	lines := []string{
 		titleStyle.Render(issue.IDReadable),
 		inlineText(issue.Summary),
-		issueMetadataLine(issue),
-		"",
-		renderMarkdown(issue.Description, width),
 	}
-	fields := issueFields(issue)
-	if len(fields) > 0 {
-		lines = append(lines, "", titleStyle.Render("Fields"))
-		lines = append(lines, fields...)
+	if fields := issueFieldPanel(issue, width); fields != "" {
+		lines = append(lines, "", fields)
 	}
+	lines = append(lines, "", renderMarkdown(issue.Description, width))
 	return strings.Join(lines, "\n")
 }
 

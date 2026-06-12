@@ -1388,11 +1388,17 @@ func TestIssueDetailRendersCustomFields(t *testing.T) {
 	m = updated.(model)
 
 	view := m.View()
+	if !strings.Contains(view, "Signals") {
+		t.Fatalf("View() = %q, want signals panel", view)
+	}
 	if !strings.Contains(view, "State: Open") {
 		t.Fatalf("View() = %q, want state field", view)
 	}
 	if !strings.Contains(view, "Assignee: jane") {
 		t.Fatalf("View() = %q, want assignee field", view)
+	}
+	if strings.Contains(view, "\nFields\n") {
+		t.Fatalf("View() = %q, want fields outside appended detail flow", view)
 	}
 }
 
@@ -1413,10 +1419,41 @@ func TestIssueDetailRendersMetadataStrip(t *testing.T) {
 	}}})
 	m = updated.(model)
 
-	view := m.View()
-	for _, want := range []string{"Project ABC", "State Open", "Assignee jane", "Priority Major", "Type Bug", "Resolved no"} {
+	view := stripANSI(m.View())
+	for _, want := range []string{"Signals", "Project: ABC", "State: Open", "Assignee: jane", "Priority: Major", "Type: Bug", "Resolved: no"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want metadata %q", view, want)
+		}
+	}
+}
+
+func TestIssueFieldRowsAssignSemanticKinds(t *testing.T) {
+	rows := issueFieldRows(youtrack.Issue{
+		Project:  youtrack.Project{ShortName: "ABC"},
+		Resolved: 1710000000000,
+		CustomFields: []youtrack.CustomField{
+			{Name: "State", Value: "Fixed"},
+			{Name: "Assignee", Value: "jane"},
+			{Name: "Priority", Value: "Critical"},
+			{Name: "Type", Value: "Bug"},
+			{Name: "Subsystem", Value: "Auth"},
+		},
+	})
+	kinds := make(map[string]string)
+	for _, row := range rows {
+		kinds[row.Label] = row.Kind
+	}
+	for label, want := range map[string]string{
+		"Project":   "project",
+		"State":     "state",
+		"Assignee":  "person",
+		"Priority":  "priority",
+		"Type":      "type",
+		"Resolved":  "resolved",
+		"Subsystem": "custom",
+	} {
+		if kinds[label] != want {
+			t.Fatalf("field %s kind = %q, want %q in %#v", label, kinds[label], want, rows)
 		}
 	}
 }
