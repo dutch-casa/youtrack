@@ -154,22 +154,22 @@ type inlineImage struct {
 }
 
 func renderInlineImage(protocol imageProtocol, image inlineImage) string {
+	var rendered string
 	switch protocol {
 	case imageProtocolITerm:
-		return renderITermImage(image)
+		rendered = renderITermImage(image)
 	case imageProtocolKitty:
-		return renderKittyImage(image)
+		rendered = renderKittyImage(image)
 	default:
 		return ""
 	}
+	return rendered + strings.Repeat("\n", max(1, image.Height))
 }
 
 func clearInlineImages(protocol imageProtocol) string {
 	switch protocol {
 	case imageProtocolKitty:
 		return "\x1b_Ga=d,d=A\x1b\\"
-	case imageProtocolITerm:
-		return "\x1b[H\x1b[2J"
 	default:
 		return ""
 	}
