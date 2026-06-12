@@ -43,7 +43,7 @@ func TestIssueCustomFieldsDecodeDisplayValues(t *testing.T) {
 func TestCustomFieldStringValueProperty(t *testing.T) {
 	property := func(name, value string) bool {
 		name = strings.TrimSpace(name)
-		value = strings.TrimSpace(value)
+		value = displayText(value)
 		if name == "" || value == "" {
 			return true
 		}
