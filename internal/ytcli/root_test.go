@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -137,6 +138,7 @@ func TestUpgradeRunsDownloadedInstallerForCurrentBinary(t *testing.T) {
 		installed.script = string(script)
 		installed.binDir = binDir
 		installed.name = name
+		_, _ = fmt.Fprintln(out, "installer progress")
 		return nil
 	}
 	t.Cleanup(func() {
@@ -145,12 +147,13 @@ func TestUpgradeRunsDownloadedInstallerForCurrentBinary(t *testing.T) {
 
 	targetDir := t.TempDir()
 	var out bytes.Buffer
+	var errOut bytes.Buffer
 	err := Execute(context.Background(), []string{
 		"upgrade",
 		"--installer-url", server.URL,
 		"--bin-dir", targetDir,
 		"--name", "yt-test",
-	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	}, strings.NewReader(""), &out, &errOut)
 	if err != nil {
 		t.Fatalf("upgrade error = %v", err)
 	}
@@ -163,6 +166,12 @@ func TestUpgradeRunsDownloadedInstallerForCurrentBinary(t *testing.T) {
 	}
 	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
 		t.Fatalf("upgrade output is not JSON: %v; output %q", err, out.String())
+	}
+	if strings.Contains(out.String(), "installer progress") {
+		t.Fatalf("upgrade stdout included installer progress: %q", out.String())
+	}
+	if !strings.Contains(errOut.String(), "installer progress") {
+		t.Fatalf("upgrade stderr = %q, want installer progress", errOut.String())
 	}
 	if !result.Updated || result.Path != filepath.Join(targetDir, "yt-test") {
 		t.Fatalf("upgrade output = %#v", result)

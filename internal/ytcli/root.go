@@ -942,7 +942,7 @@ func (a *app) upgradeCommand() *cobra.Command {
 				return err
 			}
 			fmt.Fprintf(a.errOut, "Updating %s\n", filepath.Join(binDir, name))
-			if err := runInstallScript(cmd.Context(), script, binDir, name, a.out, a.errOut); err != nil {
+			if err := runInstallScript(cmd.Context(), script, binDir, name, a.errOut, a.errOut); err != nil {
 				return err
 			}
 			return output.Write(a.out, a.format, map[string]any{
