@@ -407,6 +407,19 @@ func TestMarkdownRenderingFormatsDocumentText(t *testing.T) {
 	}
 }
 
+func TestMarkdownRenderingFormatsTables(t *testing.T) {
+	rendered := renderMarkdown("| Key | Value |\n| --- | --- |\n| YOUTRACK_URL | instance&nbsp;URL |", 72)
+	if strings.Contains(rendered, "&nbsp;") || strings.Contains(rendered, "| --- |") {
+		t.Fatalf("renderMarkdown() = %q, want formatted terminal table", rendered)
+	}
+	plain := stripANSI(rendered)
+	for _, want := range []string{"Key", "Value", "YOUTRACK_URL", "instance URL"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("renderMarkdown() = %q, want table content %q", rendered, want)
+		}
+	}
+}
+
 var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func stripANSI(value string) string {
