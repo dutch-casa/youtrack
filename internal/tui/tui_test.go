@@ -14,6 +14,8 @@ type fakeClient struct {
 	issues      []youtrack.Issue
 	comments    []youtrack.Comment
 	attachments []youtrack.Attachment
+	activities  []youtrack.Activity
+	links       []youtrack.IssueLink
 	err         error
 }
 
@@ -27,6 +29,14 @@ func (f fakeClient) Comments(ctx context.Context, issueID string) ([]youtrack.Co
 
 func (f fakeClient) Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error) {
 	return f.attachments, f.err
+}
+
+func (f fakeClient) Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error) {
+	return f.activities, f.err
+}
+
+func (f fakeClient) IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error) {
+	return f.links, f.err
 }
 
 func TestModelMovementClamps(t *testing.T) {
@@ -91,6 +101,10 @@ func TestTabCyclesToAttachmentsPane(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
 	if m.pane != attachmentsPane {
@@ -146,6 +160,48 @@ func TestAttachmentsPaneRendersAttachments(t *testing.T) {
 	}
 	if !strings.Contains(view, "2.0 KiB") || !strings.Contains(view, "image/png") {
 		t.Fatalf("View() = %q, want attachment metadata", view)
+	}
+}
+
+func TestLinksPaneRendersLinks(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = linksPane
+	updated, _ = m.Update(linksMsg{
+		issueID: "ABC-1",
+		links: []youtrack.IssueLink{{
+			Direction: "OUTWARD",
+			LinkType:  youtrack.LinkType{Name: "Depend", SourceToTarget: "is required for"},
+			Issues:    []youtrack.Issue{{IDReadable: "ABC-2", Summary: "Two"}},
+		}},
+	})
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "Links") || !strings.Contains(view, "ABC-2") || !strings.Contains(view, "is required for") {
+		t.Fatalf("View() = %q, want link", view)
+	}
+}
+
+func TestActivitiesPaneRendersActivity(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = activitiesPane
+	updated, _ = m.Update(activitiesMsg{
+		issueID: "ABC-1",
+		activities: []youtrack.Activity{{
+			Type:   "CommentActivityItem",
+			Author: youtrack.User{Login: "jane"},
+			Target: []byte(`{"text":"Looks fixed"}`),
+		}},
+	})
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "Activity") || !strings.Contains(view, "jane") || !strings.Contains(view, "Looks fixed") {
+		t.Fatalf("View() = %q, want activity", view)
 	}
 }
 

@@ -13,6 +13,7 @@ See also:
 - [0009 TUI Evidence Browsing](adr/0009-tui-evidence-browsing.md)
 - [0010 Typed Activity History](adr/0010-typed-activity-history.md)
 - [0011 Typed Link Browsing](adr/0011-typed-link-browsing.md)
+- [0012 TUI Workspace Structure](adr/0012-tui-workspace-structure.md)
 
 ## `internal/auth`
 
@@ -42,4 +43,4 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 Secret: This module hides the terminal interaction state for browsing issues.
 
-Role: It owns keyboard bindings, layout, selection state, lazy-loaded evidence panes, and rendering for the lazygit-style interactive mode.
+Role: It owns keyboard bindings, layout, selection state, lazy-loaded issue panes, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, view files own pane rendering, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.
