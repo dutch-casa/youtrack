@@ -45,7 +45,7 @@ func (m model) issueList(width, height int) string {
 	rows = append(rows, title)
 	for i, issue := range m.issues[start:end] {
 		index := start + i
-		line := fmt.Sprintf("%-12s %s", issue.IDReadable, issue.Summary)
+		line := issueListLine(issue)
 		line = truncate(line, width-4)
 		if index == m.selected {
 			line = selectedStyle.Render(line)
@@ -128,9 +128,7 @@ func (m model) issueDetail() string {
 	lines := []string{
 		titleStyle.Render(issue.IDReadable),
 		issue.Summary,
-		"",
-		"Project: " + issue.Project.ShortName,
-		"Resolved: " + resolvedText(issue.Resolved),
+		issueMetadataLine(issue),
 		"",
 		trimBlank(issue.Description),
 	}

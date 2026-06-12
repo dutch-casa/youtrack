@@ -2,10 +2,12 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
 	"testing"
+	"testing/quick"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dutchcaz/youtrack/internal/youtrack"
@@ -604,4 +606,82 @@ func TestIssueDetailRendersCustomFields(t *testing.T) {
 	if !strings.Contains(view, "Assignee: jane") {
 		t.Fatalf("View() = %q, want assignee field", view)
 	}
+}
+
+func TestIssueDetailRendersMetadataStrip(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = updated.(model)
+	updated, _ = m.Update(issuesMsg{issues: []youtrack.Issue{{
+		IDReadable: "ABC-1",
+		Summary:    "One",
+		Project:    youtrack.Project{ShortName: "ABC"},
+		Custom:     []byte(`[{"name":"State","value":{"name":"Open"}},{"name":"Assignee","value":{"login":"jane"}},{"name":"Priority","value":{"presentation":"Major"}},{"name":"Type","value":{"name":"Bug"}}]`),
+	}}})
+	m = updated.(model)
+
+	view := m.View()
+	for _, want := range []string{"Project ABC", "State Open", "Assignee jane", "Priority Major", "Type Bug", "Resolved no"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want metadata %q", view, want)
+		}
+	}
+}
+
+func TestIssueListRendersStateSignal(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{
+		IDReadable: "ABC-1",
+		Summary:    "One",
+		Custom:     []byte(`[{"name":"State","value":{"name":"Open"}}]`),
+	}}})
+	m = updated.(model)
+
+	view := m.issueList(40, 8)
+	if !strings.Contains(view, "[Open] One") {
+		t.Fatalf("issueList() = %q, want state signal", view)
+	}
+}
+
+func TestIssueCustomFieldsStringValueProperty(t *testing.T) {
+	property := func(name, value string) bool {
+		name = strings.TrimSpace(name)
+		value = strings.TrimSpace(value)
+		if name == "" || value == "" {
+			return true
+		}
+
+		data, err := json.Marshal([]map[string]any{{
+			"name":  name,
+			"value": value,
+		}})
+		if err != nil {
+			return false
+		}
+		fields := issueCustomFields(youtrack.Issue{Custom: data})
+		return len(fields) == 1 && fields[0].Name == name && fields[0].Value == value
+	}
+	if err := quick.Check(property, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func FuzzIssueCustomFields(f *testing.F) {
+	for _, seed := range []string{
+		`[{"name":"State","value":{"name":"Open"}}]`,
+		`[{"name":"Assignee","value":[{"login":"jane"},{"login":"max"}]}]`,
+		`[{"name":"Priority","value":{"presentation":"Major"}}]`,
+		`not json`,
+		`null`,
+		`[]`,
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, custom string) {
+		issue := youtrack.Issue{Custom: []byte(custom)}
+		_ = issueCustomFields(issue)
+		_ = issueMetadataLine(issue)
+		_ = issueListLine(issue)
+	})
 }
