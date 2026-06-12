@@ -382,7 +382,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.pane = m.pane.next()
 			m.detail.GotoTop()
-			return m.withSelectedPaneLoading()
+			updated, cmd := m.withSelectedPaneLoading()
+			return updated, m.withImageClear(cmd)
 		case "j", "down":
 			return m.moveSelection(1)
 		case "k", "up":
@@ -473,11 +474,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.attachmentPreviews[msg.issueID] = make(map[string]attachmentPreview)
 		}
 		m.attachmentPreviews[msg.issueID][msg.attachmentID] = attachmentPreview{Data: msg.data, Err: msg.err}
+		return m, m.imageClearCommand()
 	case markdownPreviewMsg:
 		if _, ok := m.markdownPreviews[msg.resourceID]; !ok {
 			m.markdownPreviews[msg.resourceID] = make(map[string]attachmentPreview)
 		}
 		m.markdownPreviews[msg.resourceID][msg.url] = attachmentPreview{Data: msg.data, Err: msg.err}
+		return m, m.imageClearCommand()
 	case activitiesMsg:
 		if m.currentIssueID() == msg.issueID {
 			m.activitiesLoading = false
@@ -913,7 +916,8 @@ func (m model) moveSelection(delta int) (tea.Model, tea.Cmd) {
 		}
 		m.selected = next
 		m.detail.GotoTop()
-		return m.withSelectedPaneLoading()
+		updated, cmd := m.withSelectedPaneLoading()
+		return updated, m.withImageClear(cmd)
 	}
 	if len(m.resources) == 0 {
 		return m, nil
@@ -924,7 +928,7 @@ func (m model) moveSelection(delta int) (tea.Model, tea.Cmd) {
 	}
 	m.resourceSelected = next
 	m.detail.GotoTop()
-	return m, m.loadSelectedResourceMarkdownPreviews()
+	return m, m.withImageClear(m.loadSelectedResourceMarkdownPreviews())
 }
 
 func (m *model) selectFirst() {
@@ -949,9 +953,30 @@ func (m *model) selectLast() {
 
 func (m model) withCurrentSelectionLoading() (tea.Model, tea.Cmd) {
 	if m.section == sectionIssues {
-		return m.withSelectedPaneLoading()
+		updated, cmd := m.withSelectedPaneLoading()
+		return updated, m.withImageClear(cmd)
 	}
-	return m, m.loadSelectedResourceMarkdownPreviews()
+	return m, m.withImageClear(m.loadSelectedResourceMarkdownPreviews())
+}
+
+func (m model) withImageClear(cmd tea.Cmd) tea.Cmd {
+	clear := m.imageClearCommand()
+	if clear == nil {
+		return cmd
+	}
+	if cmd == nil {
+		return clear
+	}
+	return tea.Sequence(clear, cmd)
+}
+
+func (m model) imageClearCommand() tea.Cmd {
+	if m.imageProtocol == imageProtocolNone {
+		return nil
+	}
+	return func() tea.Msg {
+		return tea.ClearScreen()
+	}
 }
 
 func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {

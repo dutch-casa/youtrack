@@ -40,7 +40,9 @@ func detectImageProtocol() imageProtocol {
 		return imageProtocolKitty
 	case strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") || strings.Contains(os.Getenv("TERM"), "ghostty") || os.Getenv("GHOSTTY_RESOURCES_DIR") != "":
 		return imageProtocolKitty
-	case os.Getenv("TERM_PROGRAM") == "iTerm.app" || os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_EXECUTABLE") != "":
+	case os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_EXECUTABLE") != "":
+		return imageProtocolKitty
+	case os.Getenv("TERM_PROGRAM") == "iTerm.app":
 		return imageProtocolITerm
 	default:
 		return imageProtocolNone
@@ -195,10 +197,10 @@ func renderKittyImage(image inlineImage) string {
 			more = 1
 		}
 		if builder.Len() == 0 {
-			fmt.Fprintf(&builder, "\x1b_Gf=100,t=d,a=T,s=%d,v=%d,m=%d;%s\x1b\\", image.Width, image.Height, more, chunk)
+			fmt.Fprintf(&builder, "\x1b_Gf=100,t=d,a=T,c=%d,r=%d,C=1,q=2,m=%d;%s\x1b\\", image.Width, image.Height, more, chunk)
 			continue
 		}
-		fmt.Fprintf(&builder, "\x1b_Gm=%d;%s\x1b\\", more, chunk)
+		fmt.Fprintf(&builder, "\x1b_Gq=2,m=%d;%s\x1b\\", more, chunk)
 	}
 	return builder.String()
 }

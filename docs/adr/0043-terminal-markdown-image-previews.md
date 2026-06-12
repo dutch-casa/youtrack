@@ -21,8 +21,10 @@ Keep Markdown image behavior in `internal/tui`:
 - Load only the selected resource's image previews through Bubble Tea commands.
 - Cache previews by resource ID and image URL.
 - Render images as capped thumbnails so they do not dominate the split-pane layout.
+- For Kitty, place images with `c`/`r` cell dimensions and `C=1` so the terminal does not move the cursor behind Bubble Tea's renderer.
 - Reserve terminal rows after each image escape sequence so later pane content does not slide under the rendered image.
 - Clear Kitty terminal image placements before each image-capable frame so stale graphics do not remain after navigation.
+- Force a Bubble Tea screen clear on local image-capable pane and selection changes because renderer diffs may not replay non-cell escape prefixes.
 
 ## Consequences
 

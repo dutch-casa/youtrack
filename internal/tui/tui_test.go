@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -579,6 +580,19 @@ func TestTabCyclesToAttachmentsPane(t *testing.T) {
 	}
 }
 
+func TestTabClearsImageCapableTerminal(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.imageProtocol = imageProtocolKitty
+
+	cmd := m.withImageClear(nil)
+	if cmd == nil {
+		t.Fatal("image clear command = nil")
+	}
+	if got := fmt.Sprintf("%T", cmd()); got != "tea.clearScreenMsg" {
+		t.Fatalf("image clear command message = %s, want tea.clearScreenMsg", got)
+	}
+}
+
 func TestTabLoadsWorkItemsPane(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
@@ -717,6 +731,14 @@ func TestDetectImageProtocolDetectsGhostty(t *testing.T) {
 	}
 }
 
+func TestDetectImageProtocolPrefersKittyForWezTerm(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "WezTerm")
+
+	if protocol := detectImageProtocol(); protocol != imageProtocolKitty {
+		t.Fatalf("detectImageProtocol() = %q, want kitty", protocol)
+	}
+}
+
 func TestViewClearsInlineImagesBeforeRender(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	m.imageProtocol = imageProtocolKitty
@@ -778,6 +800,9 @@ func TestKittyImageRenderingChunksLargePayloads(t *testing.T) {
 	rendered := renderInlineImage(imageProtocolKitty, inlineImage{Name: "large.png", Data: []byte(payload), Width: 40, Height: 12})
 	if strings.Count(rendered, "\x1b_G") < 2 {
 		t.Fatalf("rendered kitty image = %q, want chunked graphics commands", rendered)
+	}
+	if !strings.Contains(rendered, "c=40,r=12,C=1") {
+		t.Fatalf("rendered kitty image = %q, want cell placement without cursor movement", rendered)
 	}
 	if !strings.Contains(rendered, "m=1;") || !strings.Contains(rendered, "m=0;") {
 		t.Fatalf("rendered kitty image = %q, want continuation markers", rendered)
