@@ -29,6 +29,7 @@ See also:
 - [0025 TUI Quick Comments](adr/0025-tui-quick-comments.md)
 - [0026 TUI Work Item Browsing](adr/0026-tui-work-item-browsing.md)
 - [0027 TUI Quick Work Items](adr/0027-tui-quick-work-items.md)
+- [0028 TUI Prompt Lifecycle](adr/0028-tui-prompt-lifecycle.md)
 
 ## `internal/auth`
 
@@ -58,4 +59,4 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 Secret: This module hides the terminal interaction state for browsing issues.
 
-Role: It owns keyboard bindings, layout, selection state, lazy-loaded issue panes, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.
+Role: It owns keyboard bindings, layout, selection state, lazy-loaded issue panes, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.

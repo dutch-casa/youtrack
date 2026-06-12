@@ -689,6 +689,42 @@ func TestInputModeIsExclusive(t *testing.T) {
 	}
 }
 
+func TestRefreshClearsPromptStateFromNavigation(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	m.commandInput.SetValue("State Fixed")
+	m.commentInput.SetValue("ready")
+	m.workItemInput.SetValue("45m implementation")
+	m.queryInput.SetValue("project: ABC")
+	promptErr := errors.New("prompt failed")
+	m.commandErr = promptErr
+	m.commentErr = promptErr
+	m.workItemErr = promptErr
+	m.commandRunning = true
+	m.commentRunning = true
+	m.workItemRunning = true
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'r'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("refresh command = nil")
+	}
+	if m.inputMode != modeNavigation {
+		t.Fatalf("inputMode = %v, want modeNavigation", m.inputMode)
+	}
+	if m.commandInput.Value() != "" || m.commentInput.Value() != "" || m.workItemInput.Value() != "" || m.queryInput.Value() != "" {
+		t.Fatalf("prompt values = command %q comment %q work %q query %q; want all cleared", m.commandInput.Value(), m.commentInput.Value(), m.workItemInput.Value(), m.queryInput.Value())
+	}
+	if m.commandErr != nil || m.commentErr != nil || m.workItemErr != nil {
+		t.Fatalf("prompt errors = command %v comment %v work %v; want all cleared", m.commandErr, m.commentErr, m.workItemErr)
+	}
+	if m.commandRunning || m.commentRunning || m.workItemRunning {
+		t.Fatalf("running flags = command %v comment %v work %v; want all stopped", m.commandRunning, m.commentRunning, m.workItemRunning)
+	}
+}
+
 func TestQueryModeReloadsIssues(t *testing.T) {
 	var issueRequests []youtrack.IssueListOptions
 	m := newModel(context.Background(), fakeClient{

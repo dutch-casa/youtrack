@@ -164,22 +164,10 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
 	}
-	commandInput := textinput.New()
-	commandInput.Prompt = ": "
-	commandInput.Placeholder = "State Fixed"
-	commandInput.CharLimit = 512
-	commentInput := textinput.New()
-	commentInput.Prompt = "comment> "
-	commentInput.Placeholder = "Add a quick comment"
-	commentInput.CharLimit = 2048
-	workItemInput := textinput.New()
-	workItemInput.Prompt = "work> "
-	workItemInput.Placeholder = "45m implementation"
-	workItemInput.CharLimit = 512
-	queryInput := textinput.New()
-	queryInput.Prompt = "/ "
-	queryInput.Placeholder = "project: ABC #Unresolved"
-	queryInput.CharLimit = 512
+	commandInput := newPrompt(": ", "State Fixed", 512)
+	commentInput := newPrompt("comment> ", "Add a quick comment", 2048)
+	workItemInput := newPrompt("work> ", "45m implementation", 512)
+	queryInput := newPrompt("/ ", "project: ABC #Unresolved", 512)
 	detail := viewport.New(0, 0)
 	return model{
 		ctx:           ctx,
@@ -227,48 +215,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case ":":
 			if m.currentIssueID() != "" && !m.commandRunning {
-				m.inputMode = modeCommand
-				m.commandInput.Reset()
-				m.commandInput.Focus()
-				m.commandErr = nil
-				m.commentErr = nil
-				m.workItemErr = nil
-				m.status = ""
-				return m, textinput.Blink
+				return m, m.openCommandPrompt()
 			}
 		case "c":
 			if m.currentIssueID() != "" && !m.commentRunning {
-				m.inputMode = modeComment
-				m.commentInput.Reset()
-				m.commentInput.Focus()
-				m.commandErr = nil
-				m.commentErr = nil
-				m.workItemErr = nil
-				m.status = ""
-				return m, textinput.Blink
+				return m, m.openCommentPrompt()
 			}
 		case "w":
 			if m.currentIssueID() != "" && !m.workItemRunning {
-				m.inputMode = modeWorkItem
-				m.workItemInput.Reset()
-				m.workItemInput.Focus()
-				m.commandErr = nil
-				m.commentErr = nil
-				m.workItemErr = nil
-				m.status = ""
-				return m, textinput.Blink
+				return m, m.openWorkItemPrompt()
 			}
 		case "/":
 			if !m.loading {
-				m.inputMode = modeQuery
-				m.queryInput.Reset()
-				m.queryInput.SetValue(m.opts.Query)
-				m.queryInput.Focus()
-				m.commandErr = nil
-				m.commentErr = nil
-				m.workItemErr = nil
-				m.status = ""
-				return m, textinput.Blink
+				return m, m.openQueryPrompt()
 			}
 		case "tab":
 			m.pane = m.pane.next()
@@ -309,25 +268,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.withIssueListLoading("Loading previous page...")
 			}
 		case "r":
-			m.commandErr = nil
-			m.commentErr = nil
-			m.workItemErr = nil
-			m.inputMode = modeNavigation
+			m.clearActionErrors()
 			m.commandRunning = false
 			m.commentRunning = false
 			m.workItemRunning = false
-			m.commandInput.Blur()
-			m.commandInput.Reset()
-			m.commandInput.SetValue("")
-			m.commentInput.Blur()
-			m.commentInput.Reset()
-			m.commentInput.SetValue("")
-			m.workItemInput.Blur()
-			m.workItemInput.Reset()
-			m.workItemInput.SetValue("")
-			m.queryInput.Blur()
-			m.queryInput.Reset()
-			m.queryInput.SetValue("")
+			m.clearPrompts()
 			return m.withIssueListLoading("")
 		}
 	case issuesMsg:
@@ -390,8 +335,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = "Applied " + msg.query + " to " + msg.issueID
-		m.commandInput.Reset()
-		m.commandInput.SetValue("")
+		clearInput(&m.commandInput)
 		delete(m.comments, msg.issueID)
 		delete(m.attachments, msg.issueID)
 		delete(m.activities, msg.issueID)
@@ -405,8 +349,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = "Commented on " + msg.issueID
-		m.commentInput.Reset()
-		m.commentInput.SetValue("")
+		clearInput(&m.commentInput)
 		delete(m.comments, msg.issueID)
 		delete(m.activities, msg.issueID)
 		if m.currentIssueID() != msg.issueID {
@@ -423,8 +366,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = "Added " + formatMinutes(msg.draft.Minutes) + " to " + msg.issueID
-		m.workItemInput.Reset()
-		m.workItemInput.SetValue("")
+		clearInput(&m.workItemInput)
 		delete(m.workItems, msg.issueID)
 		delete(m.activities, msg.issueID)
 		if m.currentIssueID() != msg.issueID {
@@ -463,10 +405,7 @@ func (m model) scrollDetail(msg tea.KeyMsg) (model, bool) {
 func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
-		m.inputMode = modeNavigation
-		m.commandInput.Blur()
-		m.commandInput.Reset()
-		m.commandInput.SetValue("")
+		m.closeCommandPrompt()
 		m.commandErr = nil
 		return m, nil
 	case "enter":
@@ -476,20 +415,15 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		query := m.commandInput.Value()
 		if query == "" {
 			m.commandErr = nil
-			m.inputMode = modeNavigation
-			m.commandInput.Blur()
-			m.commandInput.SetValue("")
+			m.closeCommandPrompt()
 			return m, nil
 		}
 		issueID := m.currentIssueID()
 		if issueID == "" {
-			m.inputMode = modeNavigation
-			m.commandInput.Blur()
-			m.commandInput.SetValue("")
+			m.closeCommandPrompt()
 			return m, nil
 		}
-		m.inputMode = modeNavigation
-		m.commandInput.Blur()
+		m.closeCommandPrompt()
 		m.commandRunning = true
 		m.commandErr = nil
 		m.status = "Applying " + query + "..."
@@ -503,10 +437,7 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
-		m.inputMode = modeNavigation
-		m.commentInput.Blur()
-		m.commentInput.Reset()
-		m.commentInput.SetValue("")
+		m.closeCommentPrompt()
 		m.commentErr = nil
 		return m, nil
 	case "enter":
@@ -516,20 +447,15 @@ func (m model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		text := strings.TrimSpace(m.commentInput.Value())
 		if text == "" {
 			m.commentErr = nil
-			m.inputMode = modeNavigation
-			m.commentInput.Blur()
-			m.commentInput.SetValue("")
+			m.closeCommentPrompt()
 			return m, nil
 		}
 		issueID := m.currentIssueID()
 		if issueID == "" {
-			m.inputMode = modeNavigation
-			m.commentInput.Blur()
-			m.commentInput.SetValue("")
+			m.closeCommentPrompt()
 			return m, nil
 		}
-		m.inputMode = modeNavigation
-		m.commentInput.Blur()
+		m.closeCommentPrompt()
 		m.commentRunning = true
 		m.commentErr = nil
 		m.status = "Adding comment..."
@@ -543,10 +469,7 @@ func (m model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateWorkItemInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
-		m.inputMode = modeNavigation
-		m.workItemInput.Blur()
-		m.workItemInput.Reset()
-		m.workItemInput.SetValue("")
+		m.closeWorkItemPrompt()
 		m.workItemErr = nil
 		return m, nil
 	case "enter":
@@ -560,13 +483,10 @@ func (m model) updateWorkItemInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		issueID := m.currentIssueID()
 		if issueID == "" {
-			m.inputMode = modeNavigation
-			m.workItemInput.Blur()
-			m.workItemInput.SetValue("")
+			m.closeWorkItemPrompt()
 			return m, nil
 		}
-		m.inputMode = modeNavigation
-		m.workItemInput.Blur()
+		m.closeWorkItemPrompt()
 		m.workItemRunning = true
 		m.workItemErr = nil
 		m.status = "Adding work item..."
@@ -580,23 +500,15 @@ func (m model) updateWorkItemInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
-		m.inputMode = modeNavigation
-		m.queryInput.Blur()
-		m.queryInput.Reset()
-		m.queryInput.SetValue("")
+		m.closeQueryPrompt()
 		return m, nil
 	case "enter":
 		query := strings.TrimSpace(m.queryInput.Value())
-		m.inputMode = modeNavigation
-		m.queryInput.Blur()
-		m.queryInput.Reset()
-		m.queryInput.SetValue("")
+		m.closeQueryPrompt()
 		m.opts.Query = query
 		m.opts.Skip = 0
 		m.selected = 0
-		m.commandErr = nil
-		m.commentErr = nil
-		m.workItemErr = nil
+		m.clearActionErrors()
 		return m.withIssueListLoading("Loading query...")
 	}
 	var cmd tea.Cmd
