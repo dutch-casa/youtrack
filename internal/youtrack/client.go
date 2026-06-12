@@ -255,6 +255,9 @@ func (c *Client) CurrentUser(ctx context.Context) (User, error) {
 }
 
 func (c *Client) Projects(ctx context.Context, opts PageOptions) ([]Project, error) {
+	if err := validatePageOptions(opts); err != nil {
+		return nil, err
+	}
 	values := pageValues(opts)
 	values.Set("fields", projectFields)
 
@@ -264,6 +267,9 @@ func (c *Client) Projects(ctx context.Context, opts PageOptions) ([]Project, err
 }
 
 func (c *Client) Users(ctx context.Context, opts PageOptions) ([]User, error) {
+	if err := validatePageOptions(opts); err != nil {
+		return nil, err
+	}
 	values := pageValues(opts)
 	values.Set("fields", userFields)
 
@@ -273,6 +279,9 @@ func (c *Client) Users(ctx context.Context, opts PageOptions) ([]User, error) {
 }
 
 func (c *Client) Issues(ctx context.Context, opts IssueListOptions) ([]Issue, error) {
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
+	}
 	values := url.Values{
 		"fields": {issueFields},
 	}
@@ -375,6 +384,9 @@ func (c *Client) WorkItems(ctx context.Context, opts WorkItemListOptions) ([]Wor
 	if strings.TrimSpace(opts.IssueID) == "" {
 		return nil, errors.New("issue id is required")
 	}
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
+	}
 	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
 	values.Set("fields", workItemFields)
 
@@ -419,6 +431,9 @@ func (c *Client) AddWorkItem(ctx context.Context, req AddWorkItemRequest) (WorkI
 func (c *Client) Attachments(ctx context.Context, opts AttachmentListOptions) ([]Attachment, error) {
 	if strings.TrimSpace(opts.IssueID) == "" {
 		return nil, errors.New("issue id is required")
+	}
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
 	}
 	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
 	values.Set("fields", attachmentFields)
@@ -474,6 +489,9 @@ func (c *Client) Activities(ctx context.Context, opts ActivityListOptions) ([]Ac
 	if len(opts.Categories) == 0 {
 		return nil, errors.New("at least one activity category is required")
 	}
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
+	}
 	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
 	values.Set("fields", activityFields)
 	values.Set("categories", strings.Join(opts.Categories, ","))
@@ -498,6 +516,9 @@ func (c *Client) Activities(ctx context.Context, opts ActivityListOptions) ([]Ac
 func (c *Client) IssueLinks(ctx context.Context, opts IssueLinkListOptions) ([]IssueLink, error) {
 	if strings.TrimSpace(opts.IssueID) == "" {
 		return nil, errors.New("issue id is required")
+	}
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
 	}
 	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
 	values.Set("fields", issueLinkFields)
@@ -783,6 +804,16 @@ func pageValues(opts PageOptions) url.Values {
 		values.Set("$skip", fmt.Sprint(opts.Skip))
 	}
 	return values
+}
+
+func validatePageOptions(opts PageOptions) error {
+	if opts.Top < 0 {
+		return errors.New("top must be greater than or equal to zero")
+	}
+	if opts.Skip < 0 {
+		return errors.New("skip must be greater than or equal to zero")
+	}
+	return nil
 }
 
 func activityValues(data json.RawMessage) string {

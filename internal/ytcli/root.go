@@ -176,6 +176,9 @@ func (a *app) projectsCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List projects",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -207,6 +210,9 @@ func (a *app) usersCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List users",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -239,6 +245,9 @@ func (a *app) issuesCommand() *cobra.Command {
 		Use:   "list",
 		Short: "List issues",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -450,6 +459,9 @@ func (a *app) workItemsCommand() *cobra.Command {
 		Short: "List issue work items",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -539,6 +551,9 @@ func (a *app) attachmentsCommand() *cobra.Command {
 		Short: "List issue attachments",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -625,6 +640,9 @@ func (a *app) activitiesCommand() *cobra.Command {
 		Short: "List issue activity history",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			effectiveCategories := categories
 			if !cmd.Flags().Changed("category") {
 				effectiveCategories = youtrack.DefaultActivityCategories()
@@ -675,6 +693,9 @@ func (a *app) linksCommand() *cobra.Command {
 		Short: "List issue links",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -902,6 +923,9 @@ func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 		Aliases: []string{"ui", "tui"},
 		Short:   "Open a lazygit-style interactive issue browser",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			if top < 1 {
+				return errors.New("--top must be greater than zero")
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -912,6 +936,16 @@ func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 	cmd.Flags().StringVarP(&query, "query", "q", "", "initial YouTrack issue query")
 	cmd.Flags().IntVar(&top, "top", 50, "maximum issues to load")
 	return cmd
+}
+
+func validatePageFlags(top, skip int) error {
+	if top < 1 {
+		return errors.New("--top must be greater than zero")
+	}
+	if skip < 0 {
+		return errors.New("--skip must be greater than or equal to zero")
+	}
+	return nil
 }
 
 func (a *app) client() (*youtrack.Client, error) {

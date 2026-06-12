@@ -106,6 +106,45 @@ func TestIssuesUpdateRequiresChangedField(t *testing.T) {
 	}
 }
 
+func TestListPaginationRejectsInvalidValuesBeforeAuth(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "top",
+			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "issues", "list", "--top", "0"},
+			want: "--top",
+		},
+		{
+			name: "skip",
+			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "activities", "list", "ABC-1", "--skip", "-1"},
+			want: "--skip",
+		},
+		{
+			name: "interactive top",
+			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "interactive", "--top", "0"},
+			want: "--top",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Execute(context.Background(), tt.args, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+			if err == nil {
+				t.Fatal("Execute() error = nil, want pagination validation")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Execute() error = %q, want %q", err.Error(), tt.want)
+			}
+			if strings.Contains(err.Error(), "yt auth login") {
+				t.Fatalf("Execute() error = %q, validated pagination after auth", err.Error())
+			}
+		})
+	}
+}
+
 func TestCommentAddReadsTextFromStdin(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/issues/ABC-1/comments" {

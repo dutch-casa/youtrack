@@ -578,6 +578,12 @@ func TestClientValidatesInputs(t *testing.T) {
 	}); err == nil {
 		t.Fatal("Raw() error = nil, want query name validation")
 	}
+	if _, err := client.Projects(context.Background(), PageOptions{Top: -1}); err == nil {
+		t.Fatal("Projects() error = nil, want top validation")
+	}
+	if _, err := client.Issues(context.Background(), IssueListOptions{Skip: -1}); err == nil {
+		t.Fatal("Issues() error = nil, want skip validation")
+	}
 }
 
 type multipartPart struct {
