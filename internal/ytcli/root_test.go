@@ -525,12 +525,12 @@ func TestRawRejectsManagedHeadersBeforeAuth(t *testing.T) {
 		{
 			name: "authorization",
 			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "raw", "/api/issues", "-H", "Authorization: Bearer bad"},
-			want: "managed by yt auth",
+			want: "managed by credentials",
 		},
 		{
 			name: "content type",
 			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "raw", "/api/issues", "-H", "Content-Type: text/plain"},
-			want: "use --content-type",
+			want: "ContentType",
 		},
 	}
 
@@ -588,7 +588,7 @@ func FuzzParseRawHeaders(f *testing.F) {
 		name, _, hasColon := strings.Cut(raw, ":")
 		name = strings.TrimSpace(name)
 		managed := strings.EqualFold(name, "Authorization") || strings.EqualFold(name, "Content-Type")
-		if !hasColon || name == "" || managed || !validHTTPHeaderName(name) {
+		if !hasColon || name == "" || managed || !testValidHTTPHeaderName(name) {
 			if err == nil {
 				t.Fatalf("parseRawHeaders(%q) succeeded for invalid or managed header %#v", raw, headers)
 			}
@@ -601,6 +601,25 @@ func FuzzParseRawHeaders(f *testing.F) {
 			t.Fatalf("parseRawHeaders(%q) produced %d headers, want 1", raw, len(headers))
 		}
 	})
+}
+
+func testValidHTTPHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+		switch c {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func TestRawRejectsMultipleBodySources(t *testing.T) {

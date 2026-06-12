@@ -453,6 +453,25 @@ func TestRawRequestHeaders(t *testing.T) {
 	}
 }
 
+func TestAddRawHeaderOwnsRawHeaderPolicy(t *testing.T) {
+	headers := http.Header{}
+	if err := AddRawHeader(headers, "x-youtrack-trace", " run-1 "); err != nil {
+		t.Fatalf("AddRawHeader() error = %v", err)
+	}
+	if got := headers.Get("X-Youtrack-Trace"); got != "run-1" {
+		t.Fatalf("header = %q, want trimmed value", got)
+	}
+	if err := AddRawHeader(headers, "Authorization", "Bearer bad"); err == nil {
+		t.Fatal("AddRawHeader() error = nil, want managed authorization rejection")
+	}
+	if err := AddRawHeader(headers, "Content-Type", "text/plain"); err == nil {
+		t.Fatal("AddRawHeader() error = nil, want managed content type rejection")
+	}
+	if err := AddRawHeader(headers, "Bad Header", "value"); err == nil {
+		t.Fatal("AddRawHeader() error = nil, want header name validation")
+	}
+}
+
 func TestRawRequestMergesQueryParameters(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if got := r.URL.Query()["existing"]; len(got) != 1 || got[0] != "true" {

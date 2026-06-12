@@ -14,13 +14,15 @@ The raw command still must not let callers bypass the CLI's credential model. Ag
 
 Add repeated `yt raw --header/-H 'Name: value'` flags and carry them through `youtrack.RawRequest.Headers`.
 
-Reject `Authorization` headers at both the CLI parser and client boundary. Reject `Content-Type` headers and keep media type selection in the existing `--content-type` flag. Custom headers override default request headers such as `Accept` by name.
+Keep raw header policy in `internal/youtrack`. The CLI parser only splits `Name: value` text; it delegates header-name validation, managed `Authorization` rejection, and managed `Content-Type` rejection to the YouTrack client boundary. Custom headers override default request headers such as `Accept` by name.
 
 ## Consequences
 
 Agents can reach endpoints that require custom `Accept`, tracing, versioning, or conditional request headers without leaving the CLI surface.
 
 The auth token and body media type each continue to have one owner, which keeps the raw escape hatch low-level without making it ambiguous.
+
+The parser and client no longer duplicate raw header policy, so changes to managed headers or HTTP header-name rules land in one module.
 
 ## Rejected Alternatives
 

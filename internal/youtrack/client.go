@@ -618,21 +618,10 @@ func (c *Client) Raw(ctx context.Context, raw RawRequest) ([]byte, error) {
 
 func applyRawHeaders(req *http.Request, headers http.Header) error {
 	for name, values := range headers {
-		name = strings.TrimSpace(name)
-		if name == "" {
-			return errors.New("raw request header name is required")
+		canonical, err := rawHeaderName(name)
+		if err != nil {
+			return err
 		}
-		if strings.EqualFold(name, "Authorization") {
-			return errors.New("raw request authorization header is managed by credentials")
-		}
-		if strings.EqualFold(name, "Content-Type") {
-			return errors.New("raw request content-type header must use ContentType")
-		}
-		if !validHTTPHeaderName(name) {
-			return fmt.Errorf("raw request header name %q is invalid", name)
-		}
-
-		canonical := http.CanonicalHeaderKey(name)
 		req.Header.Del(canonical)
 		for _, value := range values {
 			req.Header.Add(canonical, value)
@@ -641,9 +630,25 @@ func applyRawHeaders(req *http.Request, headers http.Header) error {
 	return nil
 }
 
-func validHTTPHeaderName(name string) bool {
+func AddRawHeader(headers http.Header, name, value string) error {
+	canonical, err := rawHeaderName(name)
+	if err != nil {
+		return err
+	}
+	headers.Add(canonical, strings.TrimSpace(value))
+	return nil
+}
+
+func rawHeaderName(name string) (string, error) {
+	name = strings.TrimSpace(name)
 	if name == "" {
-		return false
+		return "", errors.New("raw request header name is required")
+	}
+	if strings.EqualFold(name, "Authorization") {
+		return "", errors.New("raw request authorization header is managed by credentials")
+	}
+	if strings.EqualFold(name, "Content-Type") {
+		return "", errors.New("raw request content-type header must use ContentType")
 	}
 	for i := 0; i < len(name); i++ {
 		c := name[i]
@@ -654,10 +659,10 @@ func validHTTPHeaderName(name string) bool {
 		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
 			continue
 		default:
-			return false
+			return "", fmt.Errorf("raw request header name %q is invalid", name)
 		}
 	}
-	return true
+	return http.CanonicalHeaderKey(name), nil
 }
 
 func (c *Client) get(ctx context.Context, path string, values url.Values, dst any) error {

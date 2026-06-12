@@ -878,41 +878,11 @@ func parseRawHeaders(values []string) (http.Header, error) {
 		if !ok {
 			return nil, fmt.Errorf("raw header %q must be in 'Name: value' form", raw)
 		}
-		name = strings.TrimSpace(name)
-		if name == "" {
-			return nil, errors.New("raw header name is required")
+		if err := youtrack.AddRawHeader(headers, name, value); err != nil {
+			return nil, err
 		}
-		if strings.EqualFold(name, "Authorization") {
-			return nil, errors.New("raw header Authorization is managed by yt auth")
-		}
-		if strings.EqualFold(name, "Content-Type") {
-			return nil, errors.New("use --content-type for Content-Type")
-		}
-		if !validHTTPHeaderName(name) {
-			return nil, fmt.Errorf("raw header name %q is invalid", name)
-		}
-		headers.Add(name, strings.TrimSpace(value))
 	}
 	return headers, nil
-}
-
-func validHTTPHeaderName(name string) bool {
-	if name == "" {
-		return false
-	}
-	for i := 0; i < len(name); i++ {
-		c := name[i]
-		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
-			continue
-		}
-		switch c {
-		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
-			continue
-		default:
-			return false
-		}
-	}
-	return true
 }
 
 func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
