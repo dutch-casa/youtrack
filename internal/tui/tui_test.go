@@ -9,7 +9,7 @@ import (
 	"testing/quick"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dutchcaz/youtrack/internal/youtrack"
+	"github.com/dutch-casa/youtrack/internal/youtrack"
 )
 
 type fakeClient struct {

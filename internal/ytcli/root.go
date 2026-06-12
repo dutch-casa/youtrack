@@ -15,11 +15,11 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dutchcaz/youtrack/internal/auth"
-	"github.com/dutchcaz/youtrack/internal/output"
-	"github.com/dutchcaz/youtrack/internal/textinput"
-	"github.com/dutchcaz/youtrack/internal/tui"
-	"github.com/dutchcaz/youtrack/internal/youtrack"
+	"github.com/dutch-casa/youtrack/internal/auth"
+	"github.com/dutch-casa/youtrack/internal/output"
+	"github.com/dutch-casa/youtrack/internal/textinput"
+	"github.com/dutch-casa/youtrack/internal/tui"
+	"github.com/dutch-casa/youtrack/internal/youtrack"
 	"github.com/spf13/cobra"
 )
 

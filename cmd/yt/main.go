@@ -6,7 +6,7 @@ import (
 	"os"
 	"os/signal"
 
-	"github.com/dutchcaz/youtrack/internal/ytcli"
+	"github.com/dutch-casa/youtrack/internal/ytcli"
 )
 
 func main() {

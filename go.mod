@@ -1,4 +1,4 @@
-module github.com/dutchcaz/youtrack
+module github.com/dutch-casa/youtrack
 
 go 1.26.2
 

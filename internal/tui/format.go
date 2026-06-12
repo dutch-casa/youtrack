@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/dutchcaz/youtrack/internal/youtrack"
+	"github.com/dutch-casa/youtrack/internal/youtrack"
 )
 
 func truncate(value string, width int) string {

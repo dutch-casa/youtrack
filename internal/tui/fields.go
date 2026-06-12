@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"strings"
 
-	"github.com/dutchcaz/youtrack/internal/youtrack"
+	"github.com/dutch-casa/youtrack/internal/youtrack"
 )
 
 func issueFieldValue(issue youtrack.Issue, names ...string) string {

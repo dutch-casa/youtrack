@@ -8,7 +8,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/dutchcaz/youtrack/internal/youtrack"
+	"github.com/dutch-casa/youtrack/internal/youtrack"
 )
 
 type Options struct {

@@ -1,10 +1,14 @@
 #!/bin/sh
 set -eu
 
+default_repo_url="https://github.com/dutch-casa/youtrack"
+default_module_path="github.com/dutch-casa/youtrack/cmd/yt"
+
 program_name="yt"
 prefix="${PREFIX:-$HOME/.local}"
 bin_dir="${BINDIR:-}"
-repo_url="${YOUTRACK_REPO_URL:-https://github.com/dutch-casa/youtrack}"
+repo_url="${YOUTRACK_REPO_URL:-$default_repo_url}"
+module_path="${YOUTRACK_MODULE_PATH:-$default_module_path}"
 dry_run=0
 
 usage() {
@@ -29,6 +33,8 @@ Environment:
   GO              Go command to use. Defaults to go.
   YOUTRACK_REPO_URL
                   Default repository URL when --repo is not passed.
+  YOUTRACK_MODULE_PATH
+                  Go package path used as a gitless fallback.
 USAGE
 }
 
@@ -84,6 +90,7 @@ esac
 
 clone_dir=""
 build_dir=""
+go_install_binary=""
 
 cleanup() {
 	if [ -n "$build_dir" ]; then
@@ -106,13 +113,6 @@ checkout_root() {
 
 script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || pwd)
 repo_root=$(checkout_root "$script_dir/.." || checkout_root "." || true)
-if [ -z "$repo_root" ]; then
-	command -v git >/dev/null 2>&1 || die "git is required when install.sh is not run from a checkout"
-	clone_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-src.XXXXXX")
-	say "cloning $repo_url"
-	git clone --depth 1 "$repo_url" "$clone_dir/youtrack"
-	repo_root=$(checkout_root "$clone_dir/youtrack") || die "cloned repository does not look like YouTrack CLI"
-fi
 
 if [ -z "$bin_dir" ]; then
 	bin_dir="$prefix/bin"
@@ -121,8 +121,19 @@ fi
 go_cmd=${GO:-go}
 target="$bin_dir/$program_name"
 
+if [ -z "$repo_root" ] && command -v git >/dev/null 2>&1; then
+	clone_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-src.XXXXXX")
+	say "cloning $repo_url"
+	git clone --depth 1 "$repo_url" "$clone_dir/youtrack"
+	repo_root=$(checkout_root "$clone_dir/youtrack") || die "cloned repository does not look like YouTrack CLI"
+fi
+
 say "YouTrack CLI installer"
-say "  source: $repo_root"
+if [ -n "$repo_root" ]; then
+	say "  source: $repo_root"
+else
+	say "  source: $module_path@latest"
+fi
 say "  target: $target"
 say "  go:     $go_cmd"
 
@@ -135,8 +146,19 @@ command -v "$go_cmd" >/dev/null 2>&1 || die "Go is required; install Go or set G
 
 build_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-build.XXXXXX")
 
-say "building $program_name"
-(cd "$repo_root" && "$go_cmd" build -trimpath -ldflags "-s -w" -o "$build_dir/$program_name" ./cmd/yt)
+if [ -n "$repo_root" ]; then
+	say "building $program_name"
+	(cd "$repo_root" && "$go_cmd" build -trimpath -ldflags "-s -w" -o "$build_dir/$program_name" ./cmd/yt)
+else
+	if [ "$repo_url" != "$default_repo_url" ] && [ "$module_path" = "$default_module_path" ]; then
+		die "git is required for custom --repo installs; set YOUTRACK_MODULE_PATH for a gitless custom module"
+	fi
+	say "installing $module_path@latest"
+	(GOBIN=$build_dir "$go_cmd" install "$module_path@latest")
+	go_install_binary="$build_dir/yt"
+	[ -f "$go_install_binary" ] || die "go install did not produce $go_install_binary"
+	cp "$go_install_binary" "$build_dir/$program_name"
+fi
 
 mkdir -p "$bin_dir"
 install -m 0755 "$build_dir/$program_name" "$target"
