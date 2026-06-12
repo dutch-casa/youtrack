@@ -106,6 +106,9 @@ func (m model) resourceList(width, height int) string {
 		position = min(max(m.resourceSelected, 0), len(m.resources)-1) + 1
 	}
 	title := firstNonEmpty(m.resourceTitle, m.section.title())
+	if page := m.resourcePageNumber(); page > 1 {
+		title = fmt.Sprintf("%s page %d", title, page)
+	}
 	rows = append(rows, titleStyle.Render(fmt.Sprintf("%s %d/%d", title, position, len(m.resources))))
 	for i, resource := range m.resources[start:end] {
 		index := start + i
@@ -168,6 +171,13 @@ func (m model) issuePageNumber() int {
 		return 1
 	}
 	return m.opts.Skip/m.opts.Top + 1
+}
+
+func (m model) resourcePageNumber() int {
+	if m.opts.Top <= 0 {
+		return 1
+	}
+	return m.resourceSkip/m.opts.Top + 1
 }
 
 func visibleIssueRange(selected, total, height int) (int, int) {

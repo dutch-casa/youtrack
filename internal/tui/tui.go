@@ -138,6 +138,8 @@ type model struct {
 	allResources      []resourceItem
 	resourceTitle     string
 	resourceKind      resourceKind
+	resourceContextID string
+	resourceSkip      int
 	resourceSelected  int
 	resourcesLoading  bool
 	resourcesErr      error
@@ -421,11 +423,21 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.selected = 0
 				return m.withIssueListLoading("Loading next page...")
 			}
+			if m.section != sectionIssues && !m.resourcesLoading && m.canLoadNextResourcePage() {
+				m.resourceSkip += m.opts.Top
+				m.resourceSelected = 0
+				return m.withResourceListLoading("Loading next page...")
+			}
 		case "p":
 			if m.section == sectionIssues && !m.loading && m.opts.Skip > 0 {
 				m.opts.Skip = max(0, m.opts.Skip-m.opts.Top)
 				m.selected = 0
 				return m.withIssueListLoading("Loading previous page...")
+			}
+			if m.section != sectionIssues && !m.resourcesLoading && m.resourceSkip > 0 {
+				m.resourceSkip = max(0, m.resourceSkip-m.opts.Top)
+				m.resourceSelected = 0
+				return m.withResourceListLoading("Loading previous page...")
 			}
 		case "r":
 			m.clearActionErrors()
@@ -850,6 +862,8 @@ func (m model) openSelectedAgileSprints() (tea.Model, tea.Cmd) {
 	m.resourcesErr = nil
 	m.resourceSelected = 0
 	m.resourceFilter = ""
+	m.resourceSkip = 0
+	m.resourceContextID = agileID
 	m.detail.GotoTop()
 	m.status = "Loading sprints for " + title + "..."
 	return m, m.loadAgileSprints(agileID, title)
@@ -888,46 +902,46 @@ func (m model) issueSearchQuery() string {
 
 func (m model) loadResources(s section) tea.Cmd {
 	return func() tea.Msg {
-		resources, err := m.resourcesForSection(s)
+		resources, err := m.resourcesForSection(s, m.resourceSkip)
 		return resourcesMsg{section: s, title: s.title(), kind: resourceKindSection, resources: resources, err: err}
 	}
 }
 
 func (m model) loadAgileSprints(agileID, title string) tea.Cmd {
 	return func() tea.Msg {
-		sprints, err := m.client.Sprints(m.ctx, youtrack.SprintListOptions{AgileID: agileID, Top: m.opts.Top})
+		sprints, err := m.client.Sprints(m.ctx, youtrack.SprintListOptions{AgileID: agileID, Top: m.opts.Top, Skip: m.resourceSkip})
 		return resourcesMsg{section: sectionAgile, title: "Sprints: " + title, kind: resourceKindAgileSprints, resources: sprintResources(sprints), err: err}
 	}
 }
 
-func (m model) resourcesForSection(s section) ([]resourceItem, error) {
+func (m model) resourcesForSection(s section, skip int) ([]resourceItem, error) {
 	switch s {
 	case sectionKnowledge:
-		articles, err := m.client.Articles(m.ctx, youtrack.ArticleListOptions{Top: m.opts.Top})
+		articles, err := m.client.Articles(m.ctx, youtrack.ArticleListOptions{Top: m.opts.Top, Skip: skip})
 		if err != nil {
 			return nil, err
 		}
 		return articleResources(articles), nil
 	case sectionHelpdesk:
-		projects, err := m.client.HelpdeskProjects(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		projects, err := m.client.HelpdeskProjects(m.ctx, youtrack.PageOptions{Top: m.opts.Top, Skip: skip})
 		if err != nil {
 			return nil, err
 		}
 		return projectResources(projects), nil
 	case sectionAgile:
-		agiles, err := m.client.Agiles(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		agiles, err := m.client.Agiles(m.ctx, youtrack.PageOptions{Top: m.opts.Top, Skip: skip})
 		if err != nil {
 			return nil, err
 		}
 		return agileResources(agiles), nil
 	case sectionProjects:
-		projects, err := m.client.Projects(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		projects, err := m.client.Projects(m.ctx, youtrack.PageOptions{Top: m.opts.Top, Skip: skip})
 		if err != nil {
 			return nil, err
 		}
 		return projectResources(projects), nil
 	case sectionUsers:
-		users, err := m.client.Users(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		users, err := m.client.Users(m.ctx, youtrack.PageOptions{Top: m.opts.Top, Skip: skip})
 		if err != nil {
 			return nil, err
 		}
@@ -952,6 +966,8 @@ func (m model) switchSection(s section) (tea.Model, tea.Cmd) {
 	m.allResources = nil
 	m.resourceTitle = s.title()
 	m.resourceKind = resourceKindSection
+	m.resourceContextID = ""
+	m.resourceSkip = 0
 	m.resourceSelected = 0
 	m.resourcesLoading = true
 	m.resourcesErr = nil
@@ -964,6 +980,8 @@ func (m model) withSectionLoading(status string) (tea.Model, tea.Cmd) {
 	if m.section == sectionIssues {
 		return m.withIssueListLoading(status)
 	}
+	m.resourceSkip = 0
+	m.resourceContextID = ""
 	m.resourcesLoading = true
 	m.resourcesErr = nil
 	m.resourceTitle = m.section.title()
@@ -971,6 +989,18 @@ func (m model) withSectionLoading(status string) (tea.Model, tea.Cmd) {
 	m.resourceSelected = 0
 	m.detail.GotoTop()
 	m.status = status
+	return m, m.loadResources(m.section)
+}
+
+func (m model) withResourceListLoading(status string) (tea.Model, tea.Cmd) {
+	m.resourcesLoading = true
+	m.resourcesErr = nil
+	m.detail.GotoTop()
+	m.status = status
+	if m.section == sectionAgile && m.resourceKind == resourceKindAgileSprints && m.resourceContextID != "" {
+		title := strings.TrimPrefix(m.resourceTitle, "Sprints: ")
+		return m, m.loadAgileSprints(m.resourceContextID, firstNonEmpty(title, m.resourceContextID))
+	}
 	return m, m.loadResources(m.section)
 }
 
@@ -1167,6 +1197,10 @@ func (m model) withIssueListLoading(status string) (tea.Model, tea.Cmd) {
 
 func (m model) canLoadNextIssuePage() bool {
 	return m.opts.Top > 0 && len(m.issues) == m.opts.Top
+}
+
+func (m model) canLoadNextResourcePage() bool {
+	return m.opts.Top > 0 && len(m.resources) == m.opts.Top
 }
 
 func (m *model) clearPaneCaches() {

@@ -20,6 +20,7 @@ type fakeClient struct {
 	projects          []youtrack.Project
 	users             []youtrack.User
 	articles          []youtrack.Article
+	articleRequests   *[]youtrack.ArticleListOptions
 	agiles            []youtrack.Agile
 	sprints           []youtrack.Sprint
 	sprintRequests    *[]youtrack.SprintListOptions
@@ -62,6 +63,9 @@ func (f fakeClient) Users(ctx context.Context, opts youtrack.PageOptions) ([]you
 }
 
 func (f fakeClient) Articles(ctx context.Context, opts youtrack.ArticleListOptions) ([]youtrack.Article, error) {
+	if f.articleRequests != nil {
+		*f.articleRequests = append(*f.articleRequests, opts)
+	}
 	return f.articles, f.err
 }
 
@@ -1552,6 +1556,103 @@ func TestIssuePagingDoesNotAdvancePastPartialPage(t *testing.T) {
 	}
 }
 
+func TestResourcePagingUsesSkip(t *testing.T) {
+	var articleRequests []youtrack.ArticleListOptions
+	m := newModel(context.Background(), fakeClient{
+		articles:        []youtrack.Article{{IDReadable: "KB-11", Summary: "Next"}},
+		articleRequests: &articleRequests,
+	}, Options{Top: 10})
+	m.section = sectionKnowledge
+	m.resourceTitle = sectionKnowledge.title()
+	m.resources = numberedResources("KB", 10)
+	m.allResources = append([]resourceItem(nil), m.resources...)
+	m.resourceSelected = 9
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("next resource page command = nil")
+	}
+	if m.resourceSkip != 10 {
+		t.Fatalf("resourceSkip = %d, want next page skip", m.resourceSkip)
+	}
+	if m.resourceSelected != 0 {
+		t.Fatalf("resourceSelected = %d, want reset to first resource", m.resourceSelected)
+	}
+
+	msg := cmd().(resourcesMsg)
+	if msg.err != nil {
+		t.Fatalf("next resource page error = %v", msg.err)
+	}
+	if len(articleRequests) != 1 || articleRequests[0].Skip != 10 || articleRequests[0].Top != 10 {
+		t.Fatalf("article requests = %#v, want next page request", articleRequests)
+	}
+	if len(msg.resources) != 1 || msg.resources[0].ID != "KB-11" {
+		t.Fatalf("next resources = %#v, want fake article resource", msg.resources)
+	}
+
+	updated, _ = m.Update(msg)
+	m = updated.(model)
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("previous resource page command = nil")
+	}
+	if m.resourceSkip != 0 {
+		t.Fatalf("resourceSkip = %d, want previous page skip", m.resourceSkip)
+	}
+	_ = cmd()
+	if len(articleRequests) != 2 || articleRequests[1].Skip != 0 {
+		t.Fatalf("article requests = %#v, want previous page request", articleRequests)
+	}
+}
+
+func TestResourcePagingDoesNotAdvancePastPartialPage(t *testing.T) {
+	var articleRequests []youtrack.ArticleListOptions
+	m := newModel(context.Background(), fakeClient{articleRequests: &articleRequests}, Options{Top: 10})
+	m.section = sectionKnowledge
+	m.resources = numberedResources("KB", 3)
+	m.resourceSkip = 20
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("next resource page command != nil on partial page")
+	}
+	if m.resourceSkip != 20 {
+		t.Fatalf("resourceSkip = %d, want unchanged skip", m.resourceSkip)
+	}
+	if len(articleRequests) != 0 {
+		t.Fatalf("article requests = %#v, want no request", articleRequests)
+	}
+}
+
+func TestSprintPagingUsesSelectedBoardContext(t *testing.T) {
+	var sprintRequests []youtrack.SprintListOptions
+	m := newModel(context.Background(), fakeClient{
+		sprints:        []youtrack.Sprint{{ID: "121-11", Name: "Next sprint"}},
+		sprintRequests: &sprintRequests,
+	}, Options{Top: 10})
+	m.section = sectionAgile
+	m.resourceKind = resourceKindAgileSprints
+	m.resourceTitle = "Sprints: Support Board"
+	m.resourceContextID = "120-2"
+	m.resources = numberedResources("Sprint", 10)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("next sprint page command = nil")
+	}
+	if m.resourceSkip != 10 {
+		t.Fatalf("resourceSkip = %d, want next sprint page skip", m.resourceSkip)
+	}
+	_ = cmd()
+	if len(sprintRequests) != 1 || sprintRequests[0].AgileID != "120-2" || sprintRequests[0].Skip != 10 || sprintRequests[0].Top != 10 {
+		t.Fatalf("sprint requests = %#v, want sprint page request for selected board", sprintRequests)
+	}
+}
+
 func TestQueryModeCancels(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{Query: "project: ABC"})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
@@ -1657,6 +1758,15 @@ func numberedIssues(total int) []youtrack.Issue {
 		}
 	}
 	return issues
+}
+
+func numberedResources(prefix string, total int) []resourceItem {
+	resources := make([]resourceItem, total)
+	for i := range resources {
+		id := prefix + "-" + strconv.Itoa(i+1)
+		resources[i] = resourceItem{ID: id, Title: id}
+	}
+	return resources
 }
 
 func TestModelErrorView(t *testing.T) {

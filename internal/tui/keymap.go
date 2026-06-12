@@ -44,6 +44,7 @@ func resourceKeyMap() tuiKeyMap {
 		Move:     key.NewBinding(key.WithKeys("j", "k", "up", "down"), key.WithHelp("j/k", "move")),
 		Search:   key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "live fuzzy")),
 		Browser:  key.NewBinding(key.WithKeys("o"), key.WithHelp("o", "browser")),
+		Pages:    key.NewBinding(key.WithKeys("n", "p"), key.WithHelp("n/p", "page")),
 		Scroll:   key.NewBinding(key.WithKeys("pgup", "pgdown", "ctrl+u", "ctrl+d"), key.WithHelp("pg", "scroll")),
 		Refresh:  key.NewBinding(key.WithKeys("r"), key.WithHelp("r", "refresh")),
 		Quit:     key.NewBinding(key.WithKeys("q", "esc", "ctrl+c"), key.WithHelp("q", "quit")),
