@@ -65,22 +65,6 @@ func TestStoreSaveTightensExistingDirectory(t *testing.T) {
 	}
 }
 
-func TestEnsureNonInteractiveMissingAuthIsActionable(t *testing.T) {
-	clearCredentialEnv(t)
-	store := NewStore(filepath.Join(t.TempDir(), "missing.json"))
-
-	_, err := store.Ensure(strings.NewReader(""), &bytes.Buffer{})
-	if !errors.Is(err, ErrNotConfigured) {
-		t.Fatalf("Ensure() error = %v, want ErrNotConfigured", err)
-	}
-	if !strings.Contains(err.Error(), "yt auth login") {
-		t.Fatalf("Ensure() error = %q, want setup command", err.Error())
-	}
-	if !strings.Contains(err.Error(), EnvURL) || !strings.Contains(err.Error(), EnvToken) {
-		t.Fatalf("Ensure() error = %q, want env var names", err.Error())
-	}
-}
-
 func TestPromptSplitsURLAndToken(t *testing.T) {
 	var out bytes.Buffer
 

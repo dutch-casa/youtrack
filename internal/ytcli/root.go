@@ -38,6 +38,7 @@ type app struct {
 
 var openBrowser = openURL
 var runInstallScript = runInstallerScript
+var canPrompt = auth.CanPrompt
 
 func Execute(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) error {
 	configPath, err := auth.DefaultPath()
@@ -197,7 +198,7 @@ func (a *app) meCommand() *cobra.Command {
 		Use:   "me",
 		Short: "Show the authenticated YouTrack user",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -221,7 +222,7 @@ func (a *app) projectsCommand() *cobra.Command {
 			if err := validatePageFlags(top, skip); err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -255,7 +256,7 @@ func (a *app) usersCommand() *cobra.Command {
 			if err := validatePageFlags(top, skip); err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -290,7 +291,7 @@ func (a *app) issuesCommand() *cobra.Command {
 			if err := validatePageFlags(top, skip); err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -310,7 +311,7 @@ func (a *app) issuesCommand() *cobra.Command {
 		Short: "Show one issue",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -347,7 +348,7 @@ func (a *app) issuesCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -401,7 +402,7 @@ func (a *app) issuesCommand() *cobra.Command {
 				descriptionValue = &resolvedDescription
 			}
 
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -436,7 +437,7 @@ func (a *app) commentsCommand() *cobra.Command {
 		Short: "List issue comments",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -469,7 +470,7 @@ func (a *app) commentsCommand() *cobra.Command {
 			if !hasText {
 				return errors.New("--text is required")
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -504,7 +505,7 @@ func (a *app) workItemsCommand() *cobra.Command {
 			if err := validatePageFlags(top, skip); err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -548,7 +549,7 @@ func (a *app) workItemsCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -596,7 +597,7 @@ func (a *app) attachmentsCommand() *cobra.Command {
 			if err := validatePageFlags(top, skip); err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -643,7 +644,7 @@ func (a *app) attachmentsCommand() *cobra.Command {
 				})
 			}
 
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -689,7 +690,7 @@ func (a *app) activitiesCommand() *cobra.Command {
 			if !cmd.Flags().Changed("category") {
 				effectiveCategories = youtrack.DefaultActivityCategories()
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -738,7 +739,7 @@ func (a *app) linksCommand() *cobra.Command {
 			if err := validatePageFlags(top, skip); err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -790,7 +791,7 @@ func (a *app) commandsCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -857,7 +858,7 @@ func (a *app) rawCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -983,7 +984,7 @@ func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 			if top < 1 {
 				return errors.New("--top must be greater than zero")
 			}
-			client, err := a.client()
+			client, err := a.client(cmd.Context())
 			if err != nil {
 				return err
 			}
@@ -1005,12 +1006,35 @@ func validatePageFlags(top, skip int) error {
 	return nil
 }
 
-func (a *app) client() (*youtrack.Client, error) {
-	creds, err := a.store.Ensure(a.in, a.errOut)
+func (a *app) client(ctx context.Context) (*youtrack.Client, error) {
+	creds, err := a.store.Load()
+	if err == nil {
+		return youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil), nil
+	}
+	if !errors.Is(err, auth.ErrNotConfigured) {
+		return nil, err
+	}
+	if !canPrompt(a.in) {
+		return nil, missingAuthError()
+	}
+
+	fmt.Fprintln(a.errOut, "YouTrack authentication is required.")
+	prompted, err := auth.Prompt(a.in, a.errOut)
 	if err != nil {
 		return nil, err
 	}
-	return youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil), nil
+	client := youtrack.NewClient(prompted.NormalizedBaseURL(), prompted.Token, nil)
+	if _, err := client.CurrentUser(ctx); err != nil {
+		return nil, fmt.Errorf("verify credentials: %w", err)
+	}
+	if err := a.store.Save(prompted); err != nil {
+		return nil, err
+	}
+	return client, nil
+}
+
+func missingAuthError() error {
+	return fmt.Errorf("%w: run `yt auth login --url <url> --token <token>` or set %s and %s", auth.ErrNotConfigured, auth.EnvURL, auth.EnvToken)
 }
 
 func openTokenSetup(baseURL string, out io.Writer) error {

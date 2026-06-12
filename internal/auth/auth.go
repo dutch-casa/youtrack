@@ -108,36 +108,14 @@ func (s Store) Delete() error {
 	return nil
 }
 
-func (s Store) Ensure(in io.Reader, out io.Writer) (Credentials, error) {
-	creds, err := s.Load()
-	if err == nil {
-		return creds, nil
-	}
-	if !errors.Is(err, ErrNotConfigured) {
-		return Credentials{}, err
-	}
-	if !CanPrompt(in) {
-		return Credentials{}, fmt.Errorf("%w: run `yt auth login --url <url> --token <token>` or set %s and %s", ErrNotConfigured, EnvURL, EnvToken)
-	}
-
-	fmt.Fprintln(out, "YouTrack authentication is required.")
-	prompted, err := Prompt(in, out)
-	if err != nil {
-		return Credentials{}, err
-	}
-	if err := s.Save(prompted); err != nil {
-		return Credentials{}, err
-	}
-	return prompted, nil
-}
-
 func Prompt(in io.Reader, out io.Writer) (Credentials, error) {
-	baseURL, err := PromptURL(in, out)
+	reader := bufio.NewReader(in)
+	baseURL, err := promptURL(reader, out)
 	if err != nil {
 		return Credentials{}, err
 	}
 
-	token, err := PromptToken(in, out)
+	token, err := promptToken(in, reader, out)
 	if err != nil {
 		return Credentials{}, err
 	}
@@ -153,7 +131,10 @@ func Prompt(in io.Reader, out io.Writer) (Credentials, error) {
 }
 
 func PromptURL(in io.Reader, out io.Writer) (string, error) {
-	reader := bufio.NewReader(in)
+	return promptURL(bufio.NewReader(in), out)
+}
+
+func promptURL(reader *bufio.Reader, out io.Writer) (string, error) {
 	fmt.Fprint(out, "YouTrack URL: ")
 	baseURL, err := reader.ReadString('\n')
 	if err != nil {
@@ -163,7 +144,10 @@ func PromptURL(in io.Reader, out io.Writer) (string, error) {
 }
 
 func PromptToken(in io.Reader, out io.Writer) (string, error) {
-	reader := bufio.NewReader(in)
+	return promptToken(in, bufio.NewReader(in), out)
+}
+
+func promptToken(in io.Reader, reader *bufio.Reader, out io.Writer) (string, error) {
 	fmt.Fprint(out, "Permanent token: ")
 	token, err := readSecret(in, reader)
 	if err != nil {

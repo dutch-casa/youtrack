@@ -257,6 +257,84 @@ func TestMissingAuthNonInteractiveReturnsSetupError(t *testing.T) {
 	}
 }
 
+func TestMissingAuthPromptVerifiesBeforeSaving(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/users/me" {
+			t.Fatalf("request path = %q, want /api/users/me", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:secret" {
+			t.Fatalf("authorization = %q, want bearer token", got)
+		}
+		_, _ = w.Write([]byte(`{"id":"u-1","login":"jane"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	previousCanPrompt := canPrompt
+	canPrompt = func(in io.Reader) bool {
+		return true
+	}
+	t.Cleanup(func() {
+		canPrompt = previousCanPrompt
+	})
+
+	var out bytes.Buffer
+	input := strings.NewReader(server.URL + "\nperm:secret\n")
+	err := Execute(context.Background(), []string{"--config", config, "me"}, input, &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if requests != 2 {
+		t.Fatalf("requests = %d, want verification plus command request", requests)
+	}
+	if !strings.Contains(out.String(), "jane") {
+		t.Fatalf("me output = %q, want user", out.String())
+	}
+
+	out.Reset()
+	if err := Execute(context.Background(), []string{"--config", config, "auth", "status"}, strings.NewReader(""), &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("auth status error = %v", err)
+	}
+	if !strings.Contains(out.String(), `"configured": true`) {
+		t.Fatalf("auth status output = %q, want configured", out.String())
+	}
+}
+
+func TestMissingAuthPromptDoesNotSaveFailedVerification(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "bad token", http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	previousCanPrompt := canPrompt
+	canPrompt = func(in io.Reader) bool {
+		return true
+	}
+	t.Cleanup(func() {
+		canPrompt = previousCanPrompt
+	})
+
+	input := strings.NewReader(server.URL + "\nperm:bad\n")
+	err := Execute(context.Background(), []string{"--config", config, "me"}, input, &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want verification error")
+	}
+	if !strings.Contains(err.Error(), "verify credentials") {
+		t.Fatalf("Execute() error = %q, want verification context", err.Error())
+	}
+
+	var out bytes.Buffer
+	if err := Execute(context.Background(), []string{"--config", config, "auth", "status"}, strings.NewReader(""), &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("auth status error = %v", err)
+	}
+	if !strings.Contains(out.String(), `"configured": false`) {
+		t.Fatalf("auth status output = %q, want unconfigured", out.String())
+	}
+}
+
 func TestIssuesUpdateRequiresChangedField(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "config.json")
 	err := Execute(context.Background(), []string{"--config", config, "issues", "update", "ABC-1"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})

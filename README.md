@@ -57,7 +57,7 @@ export YOUTRACK_URL=https://example.youtrack.cloud
 export YOUTRACK_TOKEN=perm:...
 ```
 
-If a command needs credentials and stdin is a terminal, `yt` prompts and saves them once. In non-interactive contexts, missing credentials return an error that names the setup command and env vars.
+If a command needs credentials and stdin is a terminal, `yt` prompts, verifies the token, and saves it once. In non-interactive contexts, missing credentials return an error that names the setup command and env vars.
 
 ## Agent-Friendly Commands
 
