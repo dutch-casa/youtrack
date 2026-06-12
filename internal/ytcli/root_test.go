@@ -41,6 +41,7 @@ func TestAuthLoginStatusLogout(t *testing.T) {
 	err := Execute(context.Background(), []string{
 		"--config", config,
 		"auth", "login",
+		"--no-verify",
 		"--url", "https://example.youtrack.cloud",
 		"--token", "perm:secret",
 	}, strings.NewReader(""), &out, &bytes.Buffer{})
@@ -104,6 +105,7 @@ func TestAuthLoginOpenStartsBrowserSetup(t *testing.T) {
 		"--config", config,
 		"auth", "login",
 		"--open",
+		"--no-verify",
 		"--url", "https://example.youtrack.cloud/",
 		"--token", "perm:secret",
 	}, strings.NewReader(""), &out, &errOut)
@@ -118,6 +120,72 @@ func TestAuthLoginOpenStartsBrowserSetup(t *testing.T) {
 	}
 	if strings.Contains(errOut.String(), "perm:secret") || strings.Contains(out.String(), "perm:secret") {
 		t.Fatalf("auth login --open leaked token; stdout=%q stderr=%q", out.String(), errOut.String())
+	}
+}
+
+func TestAuthLoginVerifiesBeforeSaving(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/users/me" {
+			t.Fatalf("request path = %q, want /api/users/me", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:secret" {
+			t.Fatalf("authorization = %q, want bearer token", got)
+		}
+		_, _ = w.Write([]byte(`{"id":"u-1","login":"jane"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", config,
+		"auth", "login",
+		"--url", server.URL,
+		"--token", "perm:secret",
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("auth login error = %v", err)
+	}
+
+	var result struct {
+		Saved    bool   `json:"saved"`
+		Verified bool   `json:"verified"`
+		User     string `json:"user"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("auth login output is not JSON: %v; output %q", err, out.String())
+	}
+	if !result.Saved || !result.Verified || result.User != "jane" {
+		t.Fatalf("auth login output = %#v, want verified jane", result)
+	}
+}
+
+func TestAuthLoginDoesNotSaveFailedVerification(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		http.Error(w, "bad token", http.StatusUnauthorized)
+	}))
+	t.Cleanup(server.Close)
+
+	err := Execute(context.Background(), []string{
+		"--config", config,
+		"auth", "login",
+		"--url", server.URL,
+		"--token", "perm:bad",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("auth login error = nil, want verification error")
+	}
+	if !strings.Contains(err.Error(), "verify credentials") {
+		t.Fatalf("auth login error = %q, want verification context", err.Error())
+	}
+
+	var out bytes.Buffer
+	if err := Execute(context.Background(), []string{"--config", config, "auth", "status"}, strings.NewReader(""), &out, &bytes.Buffer{}); err != nil {
+		t.Fatalf("auth status error = %v", err)
+	}
+	if !strings.Contains(out.String(), `"configured": false`) {
+		t.Fatalf("auth status output = %q, want unconfigured", out.String())
 	}
 }
 

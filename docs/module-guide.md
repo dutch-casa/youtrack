@@ -40,7 +40,7 @@ See also:
 
 Secret: This module hides how YouTrack credentials are discovered, prompted for, and stored locally.
 
-Role: Callers ask for usable credentials. The module decides whether to use environment variables, an existing config file, or a terminal prompt, and it owns file permissions for persisted tokens. Browser-assisted setup remains a CLI entry behavior that feeds the same permanent-token credential shape into this module.
+Role: Callers ask for usable credentials. The module decides whether to use environment variables, an existing config file, or a terminal prompt, and it owns file permissions for persisted tokens. Browser-assisted setup and login verification remain CLI entry behaviors that feed the same permanent-token credential shape into this module.
 
 ## `internal/youtrack`
 

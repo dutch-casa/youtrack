@@ -14,7 +14,9 @@ YouTrack supports permanent tokens for REST API clients. YouTrack OAuth is provi
 
 Keep permanent-token authentication as the default and universal CLI auth path.
 
-Add browser-assisted setup with `yt auth login --open`. The command opens the provided or prompted YouTrack instance URL, prints the token creation path, prompts for the permanent token, and saves it with the existing local credential store.
+Add browser-assisted setup with `yt auth login --open`. The command opens the provided or prompted YouTrack instance URL, prints the token creation path, prompts for the permanent token, verifies the token against `/api/users/me`, and saves it with the existing local credential store.
+
+Credential verification is enabled by default for `yt auth login`. `--no-verify` exists for offline/manual configuration, but the normal successful login means the CLI has already proven it can authenticate to the instance.
 
 Do not make OAuth the default setup path. A future OAuth command may be added as an advanced mode for installations that have a suitable Hub client registration and redirect page, but it must not replace permanent-token setup.
 
@@ -23,6 +25,8 @@ Do not make OAuth the default setup path. A future OAuth command may be added as
 The simplest path works for Cloud, self-hosted built-in Hub, and external Hub installations without requiring administrator-created OAuth clients.
 
 The browser still helps users get to the right place, but the CLI does not depend on unstable private profile routes or a token fragment handoff page.
+
+Failed verification does not write credentials. This keeps one-time setup from storing a bad token that later fails in agent workflows.
 
 Agents retain the same non-interactive credential contract: saved config or `YOUTRACK_URL` and `YOUTRACK_TOKEN`.
 

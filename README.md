@@ -40,6 +40,8 @@ Authentication uses a YouTrack permanent token, not an OAuth browser grant. Crea
 yt auth login --url https://example.youtrack.cloud --token perm:...
 ```
 
+`yt auth login` verifies the token with YouTrack before saving it. For offline/manual config, add `--no-verify`.
+
 For the easiest guided setup, let `yt` open your YouTrack instance and walk you through token creation:
 
 ```sh

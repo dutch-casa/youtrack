@@ -95,6 +95,7 @@ func (a *app) authCommand() *cobra.Command {
 	var baseURL string
 	var token string
 	var open bool
+	var noVerify bool
 
 	login := &cobra.Command{
 		Use:   "login",
@@ -129,18 +130,32 @@ func (a *app) authCommand() *cobra.Command {
 				}
 			}
 			creds := auth.Credentials{BaseURL: baseURL, Token: token}
+			var verifiedUser string
+			if !noVerify {
+				user, err := youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil).CurrentUser(cmd.Context())
+				if err != nil {
+					return fmt.Errorf("verify credentials: %w", err)
+				}
+				verifiedUser = firstNonEmpty(user.Login, user.Name, user.FullName, user.ID)
+			}
 			if err := a.store.Save(creds); err != nil {
 				return err
 			}
-			return output.Write(a.out, a.format, map[string]any{
+			result := map[string]any{
 				"saved":      true,
 				"configPath": a.configPath,
-			})
+				"verified":   !noVerify,
+			}
+			if verifiedUser != "" {
+				result["user"] = verifiedUser
+			}
+			return output.Write(a.out, a.format, result)
 		},
 	}
 	login.Flags().StringVar(&baseURL, "url", "", "YouTrack base URL, for example https://example.youtrack.cloud")
 	login.Flags().StringVar(&token, "token", "", "YouTrack permanent token")
 	login.Flags().BoolVar(&open, "open", false, "open the YouTrack instance before prompting for a permanent token")
+	login.Flags().BoolVar(&noVerify, "no-verify", false, "save credentials without checking them against YouTrack")
 
 	logout := &cobra.Command{
 		Use:   "logout",
@@ -1093,4 +1108,13 @@ func redact(token string) string {
 		return "********"
 	}
 	return token[:4] + "..." + token[len(token)-4:]
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if strings.TrimSpace(value) != "" {
+			return value
+		}
+	}
+	return ""
 }
