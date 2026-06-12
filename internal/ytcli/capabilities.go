@@ -1,6 +1,8 @@
 package ytcli
 
 import (
+	"strings"
+
 	"github.com/dutch-casa/youtrack/internal/output"
 	"github.com/spf13/cobra"
 )
@@ -14,6 +16,7 @@ type capabilitiesDocument struct {
 	RequiresAuth      bool                    `json:"requiresAuth"`
 	Authentication    []capabilityAuth        `json:"authentication"`
 	FirstClass        []capabilityCommand     `json:"firstClass"`
+	CommandReference  []capabilityCommandSpec `json:"commandReference"`
 	Completeness      []capabilityBridge      `json:"completeness"`
 	Interactive       capabilityInteractive   `json:"interactive"`
 	SelectionGuidance []capabilityGuidanceRow `json:"selectionGuidance"`
@@ -29,6 +32,29 @@ type capabilityCommand struct {
 	Purpose  string   `json:"purpose"`
 	Mutates  bool     `json:"mutates"`
 	Examples []string `json:"examples,omitempty"`
+}
+
+type capabilityCommandSpec struct {
+	Command      string           `json:"command"`
+	Aliases      []string         `json:"aliases,omitempty"`
+	Purpose      string           `json:"purpose"`
+	Args         []string         `json:"args,omitempty"`
+	Flags        []capabilityFlag `json:"flags,omitempty"`
+	AuthRequired bool             `json:"authRequired"`
+	Mutates      bool             `json:"mutates"`
+	Output       string           `json:"output"`
+	Examples     []string         `json:"examples,omitempty"`
+}
+
+type capabilityFlag struct {
+	Name      string `json:"name"`
+	Short     string `json:"short,omitempty"`
+	Value     string `json:"value,omitempty"`
+	Default   string `json:"default,omitempty"`
+	Required  bool   `json:"required,omitempty"`
+	Repeat    bool   `json:"repeat,omitempty"`
+	Purpose   string `json:"purpose"`
+	Exclusive string `json:"exclusiveWith,omitempty"`
 }
 
 type capabilityBridge struct {
@@ -99,6 +125,7 @@ func newCapabilitiesDocument() capabilitiesDocument {
 				},
 			},
 		},
+		CommandReference: newCommandReference(),
 		Completeness: []capabilityBridge{
 			{
 				Command:  "yt commands apply ISSUE --query QUERY",
@@ -143,4 +170,312 @@ func newCapabilitiesDocument() capabilitiesDocument {
 			{Need: "human browsing", Use: "yt interactive"},
 		},
 	}
+}
+
+func newCommandReference() []capabilityCommandSpec {
+	return []capabilityCommandSpec{
+		{
+			Command:      "yt capabilities",
+			Purpose:      "Emit this machine-readable command contract.",
+			AuthRequired: false,
+			Mutates:      false,
+			Output:       "JSON capability document.",
+			Examples:     []string{"yt capabilities", "youtrack capabilities"},
+		},
+		{
+			Command:      "yt auth login",
+			Purpose:      "Save YouTrack credentials.",
+			Flags:        []capabilityFlag{requiredFlag("url", "", "URL", "YouTrack base URL for non-interactive setup"), requiredFlag("token", "", "TOKEN", "Permanent token for non-interactive setup"), boolFlag("open", "", "Open the account security page before token entry"), boolFlag("no-verify", "", "Save without calling YouTrack to verify the token")},
+			AuthRequired: false,
+			Mutates:      true,
+			Output:       "JSON object with saved/configPath/verified and optional user.",
+			Examples:     []string{"yt auth login --open --url https://example.youtrack.cloud", "yt auth login --url https://example.youtrack.cloud --token perm:..."},
+		},
+		{
+			Command:      "yt auth status",
+			Purpose:      "Report local credential configuration with token redaction.",
+			AuthRequired: false,
+			Mutates:      false,
+			Output:       "JSON object with configured status and redacted token when present.",
+			Examples:     []string{"yt auth status"},
+		},
+		{
+			Command:      "yt auth logout",
+			Purpose:      "Remove saved credentials.",
+			AuthRequired: false,
+			Mutates:      true,
+			Output:       "JSON object with removed true.",
+			Examples:     []string{"yt auth logout"},
+		},
+		{
+			Command:      "yt me",
+			Purpose:      "Show the authenticated user.",
+			AuthRequired: true,
+			Mutates:      false,
+			Output:       "YouTrack user JSON.",
+			Examples:     []string{"yt me"},
+		},
+		listSpec("yt projects list", nil, "List projects.", []string{"yt projects list --top 100"}),
+		listSpec("yt users list", nil, "List users.", []string{"yt users list --top 100"}),
+		listSpec("yt articles list", []capabilityFlag{valueFlag("project", "p", "PROJECT", "", "Restrict articles to a project short name or id")}, "List knowledge base articles.", []string{"yt articles list --project ABC"}),
+		{
+			Command:      "yt articles show ARTICLE",
+			Aliases:      []string{"yt kb show ARTICLE", "yt knowledge-base show ARTICLE"},
+			Purpose:      "Show one knowledge base article.",
+			Args:         []string{"ARTICLE"},
+			AuthRequired: true,
+			Mutates:      false,
+			Output:       "YouTrack article JSON.",
+			Examples:     []string{"yt articles show ABC-A-1"},
+		},
+		listSpec("yt agiles list", nil, "List agile boards.", []string{"yt agiles list"}),
+		listSpec("yt agiles sprints AGILE", nil, "List sprints for an agile board.", []string{"yt agiles sprints 120-1"}),
+		listSpec("yt helpdesk projects", nil, "List help desk projects.", []string{"yt helpdesk projects"}),
+		listSpec("yt helpdesk tickets PROJECT", []capabilityFlag{valueFlag("query", "q", "QUERY", "", "Additional YouTrack ticket query")}, "List help desk tickets in a project.", []string{"yt helpdesk tickets SUPPORT --query '#Unresolved'"}),
+		listSpec("yt issues list", []capabilityFlag{valueFlag("query", "q", "QUERY", "", "YouTrack issue query")}, "Search and list issues.", []string{"yt issues list --query 'project: ABC #Unresolved' --top 20"}),
+		{
+			Command:      "yt issues show ISSUE",
+			Purpose:      "Show one issue.",
+			Args:         []string{"ISSUE"},
+			AuthRequired: true,
+			Mutates:      false,
+			Output:       "YouTrack issue JSON.",
+			Examples:     []string{"yt issues show ABC-123"},
+		},
+		{
+			Command: "yt issues create",
+			Purpose: "Create an issue.",
+			Flags: []capabilityFlag{
+				requiredFlag("project", "p", "PROJECT", "Project short name"),
+				requiredFlag("summary", "s", "TEXT", "Issue summary"),
+				textFlag("description", "d", "TEXT", "Issue description"),
+				textSourceFlag("description-file", "PATH", "Read issue description from file", "description,description-stdin"),
+				boolTextSourceFlag("description-stdin", "Read issue description from stdin", "description,description-file"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Created YouTrack issue JSON.",
+			Examples:     []string{"yt issues create --project ABC --summary 'Fix login redirect'", "yt issues create --project ABC --summary 'Long report' --description-file ./report.md"},
+		},
+		{
+			Command: "yt issues update ISSUE",
+			Purpose: "Update issue summary or description.",
+			Args:    []string{"ISSUE"},
+			Flags: []capabilityFlag{
+				textFlag("summary", "s", "TEXT", "New issue summary"),
+				textFlag("description", "d", "TEXT", "New issue description"),
+				textSourceFlag("description-file", "PATH", "Read new issue description from file", "description,description-stdin"),
+				boolTextSourceFlag("description-stdin", "Read new issue description from stdin", "description,description-file"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Updated YouTrack issue JSON.",
+			Examples:     []string{"yt issues update ABC-123 --summary 'Fix login redirect after SSO'"},
+		},
+		{
+			Command:      "yt comments list ISSUE",
+			Purpose:      "List issue comments.",
+			Args:         []string{"ISSUE"},
+			AuthRequired: true,
+			Mutates:      false,
+			Output:       "Array of YouTrack comment JSON objects.",
+			Examples:     []string{"yt comments list ABC-123"},
+		},
+		{
+			Command: "yt comments add ISSUE",
+			Purpose: "Add an issue comment.",
+			Args:    []string{"ISSUE"},
+			Flags: []capabilityFlag{
+				requiredFlag("text", "t", "TEXT", "Comment text"),
+				textSourceFlag("text-file", "PATH", "Read comment text from file", "text,text-stdin"),
+				boolTextSourceFlag("text-stdin", "Read comment text from stdin", "text,text-file"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Created YouTrack comment JSON.",
+			Examples:     []string{"yt comments add ABC-123 --text 'I can reproduce this.'", "yt comments add ABC-123 --text-stdin < ./notes.md"},
+		},
+		listSpec("yt work-items list ISSUE", nil, "List issue work items.", []string{"yt work-items list ABC-123"}),
+		{
+			Command: "yt work-items add ISSUE",
+			Purpose: "Add an issue work item.",
+			Args:    []string{"ISSUE"},
+			Flags: []capabilityFlag{
+				requiredFlag("minutes", "", "MINUTES", "Work item duration in minutes; must be greater than zero"),
+				textFlag("text", "t", "TEXT", "Work item text"),
+				textSourceFlag("text-file", "PATH", "Read work item text from file", "text,text-stdin"),
+				boolTextSourceFlag("text-stdin", "Read work item text from stdin", "text,text-file"),
+				valueFlag("type-id", "", "ID", "", "Work item type id"),
+				valueFlag("author-id", "", "ID", "", "Work item author user id"),
+				valueFlag("date-ms", "", "MILLIS", "0", "Work item date as Unix milliseconds"),
+				boolFlag("mute", "", "Request muted update notifications"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Created YouTrack work item JSON.",
+			Examples:     []string{"yt work-items add ABC-123 --minutes 45 --text 'implementation'"},
+		},
+		listSpec("yt attachments list ISSUE", nil, "List issue attachments.", []string{"yt attachments list ABC-123"}),
+		{
+			Command:      "yt attachments add ISSUE",
+			Purpose:      "Attach one or more files to an issue.",
+			Args:         []string{"ISSUE"},
+			Flags:        []capabilityFlag{requiredRepeatFlag("file", "f", "PATH", "File to attach; repeat for multiple files")},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Array of uploaded YouTrack attachment JSON objects.",
+			Examples:     []string{"yt attachments add ABC-123 --file ./screenshot.png"},
+		},
+		listSpec("yt activities list ISSUE", []capabilityFlag{repeatFlag("category", "", "CATEGORY", "Activity category id; repeat to narrow history"), boolDefaultFlag("reverse", "", "true", "Return newest activities first"), valueFlag("start-ms", "", "MILLIS", "0", "Start timestamp as Unix milliseconds"), valueFlag("end-ms", "", "MILLIS", "0", "End timestamp as Unix milliseconds"), valueFlag("author", "", "USER", "", "Filter by author id, login, Hub id, or me")}, "List issue activity history. Alias: yt history list.", []string{"yt history list ABC-123 --category CommentsCategory --category CustomFieldCategory"}),
+		listSpec("yt links list ISSUE", nil, "List issue links.", []string{"yt links list ABC-123"}),
+		{
+			Command: "yt commands apply ISSUE",
+			Purpose: "Apply a YouTrack command-language query to an issue.",
+			Args:    []string{"ISSUE"},
+			Flags: []capabilityFlag{
+				requiredFlag("query", "q", "QUERY", "YouTrack command query"),
+				textFlag("comment", "c", "TEXT", "Optional command comment"),
+				textSourceFlag("comment-file", "PATH", "Read command comment from file", "comment,comment-stdin"),
+				boolTextSourceFlag("comment-stdin", "Read command comment from stdin", "comment,comment-file"),
+				boolFlag("silent", "", "Apply without notifications when YouTrack permits it"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "YouTrack command result JSON.",
+			Examples:     []string{"yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'"},
+		},
+		{
+			Command: "yt raw PATH",
+			Purpose: "Call any YouTrack REST path and write exact response bytes.",
+			Args:    []string{"PATH"},
+			Flags: []capabilityFlag{
+				valueFlag("method", "X", "METHOD", "GET", "HTTP method"),
+				valueFlag("content-type", "", "TYPE", "application/json", "Request body content type"),
+				textFlag("body", "", "TEXT", "Request body"),
+				textSourceFlag("body-file", "PATH", "Read request body from file", "body,body-stdin"),
+				boolTextSourceFlag("body-stdin", "Read request body from stdin", "body,body-file"),
+				repeatFlag("header", "H", "NAME: VALUE", "Endpoint-specific request header; Authorization and Content-Type are managed"),
+				repeatFlag("query", "q", "NAME=VALUE", "Query parameter; repeat for multiple values"),
+				valueFlag("output-file", "o", "PATH", "", "Write raw response bytes to file"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Exact response bytes to stdout or --output-file.",
+			Examples:     []string{"yt raw /api/admin/projects", "yt raw /api/issues --method POST --body-file ./issue.json", "yt raw /api/files/123 --output-file ./download.bin"},
+		},
+		{
+			Command: "yt interactive",
+			Aliases: []string{
+				"yt ui",
+				"yt tui",
+			},
+			Purpose: "Open the optional Charm terminal workspace.",
+			Flags: []capabilityFlag{
+				valueFlag("query", "q", "QUERY", "", "Initial YouTrack issue query"),
+				valueFlag("top", "", "N", "50", "Maximum issues to load"),
+			},
+			AuthRequired: true,
+			Mutates:      true,
+			Output:       "Interactive terminal UI.",
+			Examples:     []string{"yt interactive --query 'project: ABC #Unresolved'"},
+		},
+		{
+			Command: "yt upgrade",
+			Purpose: "Update the installed binary with the public installer.",
+			Flags: []capabilityFlag{
+				valueFlag("bin-dir", "", "DIR", "", "Directory to install into; defaults to this executable's directory"),
+				valueFlag("name", "", "NAME", "", "Installed binary name; defaults to this executable's file name"),
+				valueFlag("installer-url", "", "URL", defaultInstallerURL, "Installer script URL"),
+			},
+			AuthRequired: false,
+			Mutates:      true,
+			Output:       "JSON object with updated true and path.",
+			Examples:     []string{"yt upgrade", "youtrack upgrade"},
+		},
+	}
+}
+
+func listSpec(command string, extraFlags []capabilityFlag, purpose string, examples []string) capabilityCommandSpec {
+	flags := []capabilityFlag{
+		valueFlag("top", "", "N", listDefaultFor(command), "Maximum rows to return"),
+		valueFlag("skip", "", "N", "0", "Number of rows to skip"),
+	}
+	flags = append(extraFlags, flags...)
+	return capabilityCommandSpec{
+		Command:      command,
+		Purpose:      purpose,
+		Args:         commandArgs(command),
+		Flags:        flags,
+		AuthRequired: true,
+		Mutates:      false,
+		Output:       "JSON array.",
+		Examples:     examples,
+	}
+}
+
+func commandArgs(command string) []string {
+	fields := strings.Fields(command)
+	if len(fields) == 0 {
+		return nil
+	}
+	last := fields[len(fields)-1]
+	if last == strings.ToUpper(last) && strings.ContainsAny(last, "ABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+		return []string{last}
+	}
+	return nil
+}
+
+func listDefaultFor(command string) string {
+	if strings.Contains(command, "issues list") || strings.Contains(command, "helpdesk tickets") {
+		return "25"
+	}
+	return "42"
+}
+
+func requiredFlag(name, short, value, purpose string) capabilityFlag {
+	flag := valueFlag(name, short, value, "", purpose)
+	flag.Required = true
+	return flag
+}
+
+func requiredRepeatFlag(name, short, value, purpose string) capabilityFlag {
+	flag := requiredFlag(name, short, value, purpose)
+	flag.Repeat = true
+	return flag
+}
+
+func repeatFlag(name, short, value, purpose string) capabilityFlag {
+	flag := valueFlag(name, short, value, "", purpose)
+	flag.Repeat = true
+	return flag
+}
+
+func textFlag(name, short, value, purpose string) capabilityFlag {
+	return valueFlag(name, short, value, "", purpose)
+}
+
+func textSourceFlag(name, value, purpose, exclusive string) capabilityFlag {
+	flag := valueFlag(name, "", value, "", purpose)
+	flag.Exclusive = exclusive
+	return flag
+}
+
+func boolTextSourceFlag(name, purpose, exclusive string) capabilityFlag {
+	flag := boolFlag(name, "", purpose)
+	flag.Exclusive = exclusive
+	return flag
+}
+
+func boolDefaultFlag(name, short, defaultValue, purpose string) capabilityFlag {
+	flag := boolFlag(name, short, purpose)
+	flag.Default = defaultValue
+	return flag
+}
+
+func boolFlag(name, short, purpose string) capabilityFlag {
+	return capabilityFlag{Name: name, Short: short, Value: "bool", Purpose: purpose}
+}
+
+func valueFlag(name, short, value, defaultValue, purpose string) capabilityFlag {
+	return capabilityFlag{Name: name, Short: short, Value: value, Default: defaultValue, Purpose: purpose}
 }

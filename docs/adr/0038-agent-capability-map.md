@@ -27,6 +27,7 @@ The document uses a schema version and explicitly reports:
 - `defaultOutput: json`
 - authentication setup commands
 - first-class command groups
+- `commandReference` entries with args, important flags, auth requirements, mutability, output shape, and examples
 - `yt commands apply` as the issue workflow bridge
 - `yt raw` as the complete REST bridge for endpoints permitted by the token
 - `yt interactive` as an additive human browsing surface
@@ -35,11 +36,11 @@ Keep the capabilities document hand-authored instead of derived from Cobra comma
 
 ## Consequences
 
-Agents can call `yt capabilities` once, cache the result, and choose the correct surface without parsing help output.
+Agents can call `yt capabilities` once, cache the result, and choose the correct surface without parsing help output. For common calls, they can read required arguments and flags directly from `commandReference`.
 
 The command makes the completeness model explicit: typed commands are preferred for common stable work, `commands apply` covers YouTrack command-language issue workflows, and `raw` covers long-tail REST.
 
-Future changes to this JSON shape require schema-version consideration because agents may depend on it.
+Additive fields may be added under the current schema. Breaking changes to existing field meanings require schema-version consideration because agents may depend on them.
 
 ## Rejected
 

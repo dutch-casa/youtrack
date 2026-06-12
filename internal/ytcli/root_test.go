@@ -43,12 +43,24 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	}
 
 	var doc struct {
-		SchemaVersion int      `json:"schemaVersion"`
-		DefaultMode   string   `json:"defaultMode"`
-		DefaultOutput string   `json:"defaultOutput"`
-		RequiresAuth  bool     `json:"requiresAuth"`
-		CommandNames  []string `json:"commandNames"`
-		Completeness  []struct {
+		SchemaVersion    int      `json:"schemaVersion"`
+		DefaultMode      string   `json:"defaultMode"`
+		DefaultOutput    string   `json:"defaultOutput"`
+		RequiresAuth     bool     `json:"requiresAuth"`
+		CommandNames     []string `json:"commandNames"`
+		CommandReference []struct {
+			Command      string `json:"command"`
+			AuthRequired bool   `json:"authRequired"`
+			Mutates      bool   `json:"mutates"`
+			Output       string `json:"output"`
+			Flags        []struct {
+				Name      string `json:"name"`
+				Required  bool   `json:"required"`
+				Repeat    bool   `json:"repeat"`
+				Exclusive string `json:"exclusiveWith"`
+			} `json:"flags"`
+		} `json:"commandReference"`
+		Completeness []struct {
 			Command  string   `json:"command"`
 			Coverage string   `json:"coverage"`
 			UseFor   []string `json:"useFor"`
@@ -67,6 +79,20 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	if !containsString(doc.CommandNames, "yt") || !containsString(doc.CommandNames, "youtrack") {
 		t.Fatalf("command names = %#v, want yt and youtrack", doc.CommandNames)
 	}
+	createIssue := findCapabilityCommand(doc.CommandReference, "yt issues create")
+	if createIssue.Command == "" || !createIssue.AuthRequired || !createIssue.Mutates {
+		t.Fatalf("yt issues create capability = %#v, want authenticated mutating command", createIssue)
+	}
+	if !findCapabilityFlag(createIssue.Flags, "project").Required || !findCapabilityFlag(createIssue.Flags, "summary").Required {
+		t.Fatalf("yt issues create flags = %#v, want required project and summary", createIssue.Flags)
+	}
+	if findCapabilityFlag(createIssue.Flags, "description-file").Exclusive != "description,description-stdin" {
+		t.Fatalf("description-file flag = %#v, want text source exclusivity", findCapabilityFlag(createIssue.Flags, "description-file"))
+	}
+	raw := findCapabilityCommand(doc.CommandReference, "yt raw PATH")
+	if raw.Output != "Exact response bytes to stdout or --output-file." || !findCapabilityFlag(raw.Flags, "header").Repeat || !findCapabilityFlag(raw.Flags, "query").Repeat {
+		t.Fatalf("yt raw capability = %#v, want exact byte output and repeatable header/query", raw)
+	}
 	if !capabilityBridgeContains(doc.Completeness, "yt commands apply", "YouTrack command-language workflows") {
 		t.Fatalf("capabilities completeness = %#v, want command-language bridge", doc.Completeness)
 	}
@@ -76,6 +102,72 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	if doc.Interactive.Command != "yt interactive" || !containsString(doc.Interactive.Sections, "knowledge base") {
 		t.Fatalf("interactive capabilities = %#v, want knowledge base section", doc.Interactive)
 	}
+}
+
+func findCapabilityCommand(commands []struct {
+	Command      string `json:"command"`
+	AuthRequired bool   `json:"authRequired"`
+	Mutates      bool   `json:"mutates"`
+	Output       string `json:"output"`
+	Flags        []struct {
+		Name      string `json:"name"`
+		Required  bool   `json:"required"`
+		Repeat    bool   `json:"repeat"`
+		Exclusive string `json:"exclusiveWith"`
+	} `json:"flags"`
+}, command string) struct {
+	Command      string `json:"command"`
+	AuthRequired bool   `json:"authRequired"`
+	Mutates      bool   `json:"mutates"`
+	Output       string `json:"output"`
+	Flags        []struct {
+		Name      string `json:"name"`
+		Required  bool   `json:"required"`
+		Repeat    bool   `json:"repeat"`
+		Exclusive string `json:"exclusiveWith"`
+	} `json:"flags"`
+} {
+	for _, candidate := range commands {
+		if candidate.Command == command {
+			return candidate
+		}
+	}
+	return struct {
+		Command      string `json:"command"`
+		AuthRequired bool   `json:"authRequired"`
+		Mutates      bool   `json:"mutates"`
+		Output       string `json:"output"`
+		Flags        []struct {
+			Name      string `json:"name"`
+			Required  bool   `json:"required"`
+			Repeat    bool   `json:"repeat"`
+			Exclusive string `json:"exclusiveWith"`
+		} `json:"flags"`
+	}{}
+}
+
+func findCapabilityFlag(flags []struct {
+	Name      string `json:"name"`
+	Required  bool   `json:"required"`
+	Repeat    bool   `json:"repeat"`
+	Exclusive string `json:"exclusiveWith"`
+}, name string) struct {
+	Name      string `json:"name"`
+	Required  bool   `json:"required"`
+	Repeat    bool   `json:"repeat"`
+	Exclusive string `json:"exclusiveWith"`
+} {
+	for _, flag := range flags {
+		if flag.Name == name {
+			return flag
+		}
+	}
+	return struct {
+		Name      string `json:"name"`
+		Required  bool   `json:"required"`
+		Repeat    bool   `json:"repeat"`
+		Exclusive string `json:"exclusiveWith"`
+	}{}
 }
 
 func capabilityBridgeContains(bridges []struct {
