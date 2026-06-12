@@ -10,7 +10,7 @@ Paste this into a terminal on a machine where Go is installed:
 curl -fsSL https://raw.githubusercontent.com/dutch-casa/youtrack/main/scripts/install.sh | sh
 ```
 
-That installs `yt` to `~/.local/bin`.
+That installs `yt` to `~/.local/bin` and registers `youtrack` as an alias for the same CLI.
 
 To update later:
 
@@ -24,7 +24,7 @@ If you already have the checkout:
 scripts/install.sh
 ```
 
-By default this installs `yt` to `~/.local/bin`. To choose another location:
+By default this installs `yt` and `youtrack` to `~/.local/bin`. To choose another location:
 
 ```sh
 scripts/install.sh --bin-dir /usr/local/bin
@@ -62,6 +62,7 @@ If a command needs credentials and stdin is a terminal, `yt` prompts, verifies t
 ## Agent-Friendly Commands
 
 ```sh
+yt capabilities
 yt me
 yt projects list
 yt users list
@@ -97,6 +98,8 @@ yt raw /api/files/123 --output-file ./download.bin
 ```
 
 JSON is the default. Use `--format table` for human-readable output.
+
+Use `yt capabilities` or `youtrack capabilities` as the machine-readable contract for agents. It runs without authentication and describes the default mode, supported command names, first-class commands, the interactive TUI, and the completeness bridges for YouTrack command-language workflows and raw REST calls.
 
 `yt commands apply` is the high-leverage bridge to YouTrack's own command language. Use it for issue operations that humans normally perform through command input in the UI, including assignment, state changes, tags, links, watchers, and similar workflow actions, subject to the token's permissions.
 

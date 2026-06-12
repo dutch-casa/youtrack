@@ -24,7 +24,7 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "Agent-friendly YouTrack CLI") {
 		t.Fatalf("help output = %q", out.String())
 	}
-	for _, command := range []string{"projects", "users", "articles", "agiles", "helpdesk", "commands", "attachments", "activities", "links", "upgrade"} {
+	for _, command := range []string{"capabilities", "projects", "users", "articles", "agiles", "helpdesk", "commands", "attachments", "activities", "links", "upgrade"} {
 		if !strings.Contains(out.String(), command) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}
@@ -32,6 +32,72 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "work-items") {
 		t.Fatalf("help output missing work-items: %q", out.String())
 	}
+}
+
+func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "missing.json")
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{"--config", config, "capabilities"}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("capabilities error = %v", err)
+	}
+
+	var doc struct {
+		SchemaVersion int      `json:"schemaVersion"`
+		DefaultMode   string   `json:"defaultMode"`
+		DefaultOutput string   `json:"defaultOutput"`
+		RequiresAuth  bool     `json:"requiresAuth"`
+		CommandNames  []string `json:"commandNames"`
+		Completeness  []struct {
+			Command  string   `json:"command"`
+			Coverage string   `json:"coverage"`
+			UseFor   []string `json:"useFor"`
+		} `json:"completeness"`
+		Interactive struct {
+			Command  string   `json:"command"`
+			Sections []string `json:"sections"`
+		} `json:"interactive"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
+		t.Fatalf("capabilities output is not JSON: %v; output %q", err, out.String())
+	}
+	if doc.SchemaVersion != 1 || doc.DefaultMode != "non-interactive" || doc.DefaultOutput != "json" || doc.RequiresAuth {
+		t.Fatalf("capabilities = %#v, want auth-free non-interactive json schema v1", doc)
+	}
+	if !containsString(doc.CommandNames, "yt") || !containsString(doc.CommandNames, "youtrack") {
+		t.Fatalf("command names = %#v, want yt and youtrack", doc.CommandNames)
+	}
+	if !capabilityBridgeContains(doc.Completeness, "yt commands apply", "YouTrack command-language workflows") {
+		t.Fatalf("capabilities completeness = %#v, want command-language bridge", doc.Completeness)
+	}
+	if !capabilityBridgeContains(doc.Completeness, "yt raw", "Any YouTrack REST endpoint") {
+		t.Fatalf("capabilities completeness = %#v, want raw REST bridge", doc.Completeness)
+	}
+	if doc.Interactive.Command != "yt interactive" || !containsString(doc.Interactive.Sections, "knowledge base") {
+		t.Fatalf("interactive capabilities = %#v, want knowledge base section", doc.Interactive)
+	}
+}
+
+func capabilityBridgeContains(bridges []struct {
+	Command  string   `json:"command"`
+	Coverage string   `json:"coverage"`
+	UseFor   []string `json:"useFor"`
+}, command, coverage string) bool {
+	for _, bridge := range bridges {
+		if strings.Contains(bridge.Command, command) && strings.Contains(bridge.Coverage, coverage) {
+			return true
+		}
+	}
+	return false
+}
+
+func containsString(values []string, want string) bool {
+	for _, value := range values {
+		if value == want {
+			return true
+		}
+	}
+	return false
 }
 
 func TestAuthLoginStatusLogout(t *testing.T) {

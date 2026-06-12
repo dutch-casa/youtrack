@@ -39,6 +39,8 @@ See also:
 - [0035 Terminal Markdown and Help Rendering](adr/0035-terminal-markdown-and-help-rendering.md)
 - [0036 Issue Signal Panel](adr/0036-issue-signal-panel.md)
 - [0037 Issue Evidence and Article Heading Panels](adr/0037-issue-evidence-and-article-heading-panels.md)
+- [0038 Agent Capability Map](adr/0038-agent-capability-map.md)
+- [0039 Dual Command Name Registration](adr/0039-dual-command-name-registration.md)
 
 ## `internal/auth`
 
@@ -56,7 +58,7 @@ Role: Callers use typed operations for common issue, comment, attachment, link, 
 
 Secret: This module hides the command-line contract users and agents call.
 
-Role: It wires flags, subcommands, output defaults, authentication, and binary upgrade entry points into a stable CLI surface. JSON is the default because the primary caller is an agent.
+Role: It wires flags, subcommands, output defaults, authentication, capability discovery, supported command names, and binary upgrade entry points into a stable CLI surface. JSON is the default because the primary caller is an agent.
 
 ## `internal/textinput`
 

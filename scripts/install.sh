@@ -5,6 +5,7 @@ default_repo_url="https://github.com/dutch-casa/youtrack"
 default_archive_url="https://github.com/dutch-casa/youtrack/archive/refs/heads/main.tar.gz"
 
 program_name="yt"
+alias_name=""
 prefix="${PREFIX:-$HOME/.local}"
 bin_dir="${BINDIR:-}"
 repo_url="${YOUTRACK_REPO_URL:-$default_repo_url}"
@@ -22,7 +23,7 @@ Usage:
 Options:
   --prefix DIR    Installation prefix. Defaults to $PREFIX or ~/.local.
   --bin-dir DIR   Directory for the installed binary. Defaults to PREFIX/bin.
-  --name NAME     Installed binary name. Defaults to yt.
+  --name NAME     Installed binary name. Defaults to yt. Installing yt also registers youtrack, and installing youtrack also registers yt.
   --repo URL      Git repository to clone when not run from a checkout.
   --dry-run       Print what would happen without building or installing.
   --help          Show this help.
@@ -87,6 +88,10 @@ done
 case "$program_name" in
 	*/*) die "--name must be a file name, not a path" ;;
 esac
+case "$program_name" in
+	yt) alias_name="youtrack" ;;
+	youtrack) alias_name="yt" ;;
+esac
 
 clone_dir=""
 build_dir=""
@@ -119,6 +124,10 @@ fi
 
 go_cmd=${GO:-go}
 target="$bin_dir/$program_name"
+alias_target=""
+if [ -n "$alias_name" ]; then
+	alias_target="$bin_dir/$alias_name"
+fi
 
 if [ -z "$repo_root" ] && command -v git >/dev/null 2>&1; then
 	clone_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-src.XXXXXX")
@@ -149,6 +158,9 @@ fi
 say "YouTrack CLI installer"
 say "  source: $repo_root"
 say "  target: $target"
+if [ -n "$alias_target" ]; then
+	say "  alias:  $alias_target"
+fi
 say "  go:     $go_cmd"
 
 if [ "$dry_run" -eq 1 ]; then
@@ -167,6 +179,10 @@ mkdir -p "$bin_dir"
 install -m 0755 "$build_dir/$program_name" "$target"
 
 say "installed $target"
+if [ -n "$alias_target" ]; then
+	ln -sf "$program_name" "$alias_target"
+	say "registered $alias_target"
+fi
 
 case ":$PATH:" in
 	*":$bin_dir:"*) ;;
@@ -175,3 +191,7 @@ esac
 
 "$target" --help >/dev/null
 say "verified $program_name --help"
+if [ -n "$alias_target" ]; then
+	"$alias_target" --help >/dev/null
+	say "verified $alias_name --help"
+fi

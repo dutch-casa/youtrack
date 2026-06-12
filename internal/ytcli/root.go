@@ -76,6 +76,7 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	}
 
 	cmd.AddCommand(a.authCommand())
+	cmd.AddCommand(a.capabilitiesCommand())
 	cmd.AddCommand(a.meCommand())
 	cmd.AddCommand(a.projectsCommand())
 	cmd.AddCommand(a.usersCommand())
