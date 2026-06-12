@@ -1,5 +1,12 @@
 # Module Guide
 
+See also:
+
+- [0001 Knowledge Boundaries](adr/0001-knowledge-boundaries.md)
+- [0002 Agent-First Command Contract](adr/0002-agent-first-command-contract.md)
+- [0003 Permanent-Token Authentication](adr/0003-permanent-token-auth.md)
+- [0004 Charm TUI as Optional Human Mode](adr/0004-charm-tui-as-optional-human-mode.md)
+
 ## `internal/auth`
 
 Secret: This module hides how YouTrack credentials are discovered, prompted for, and stored locally.
