@@ -77,6 +77,9 @@ func (s Store) Save(creds Credentials) error {
 	if err := os.MkdirAll(filepath.Dir(s.path), 0o700); err != nil {
 		return fmt.Errorf("create auth config dir: %w", err)
 	}
+	if err := os.Chmod(filepath.Dir(s.path), 0o700); err != nil {
+		return fmt.Errorf("secure auth config dir: %w", err)
+	}
 
 	tmp := s.path + ".tmp"
 	file, err := os.OpenFile(tmp, os.O_WRONLY|os.O_CREATE|os.O_TRUNC, 0o600)
@@ -161,6 +164,9 @@ func (c Credentials) Validate() error {
 	parsed, err := url.Parse(c.BaseURL)
 	if err != nil || parsed.Scheme == "" || parsed.Host == "" {
 		return fmt.Errorf("youtrack url must be absolute: %q", c.BaseURL)
+	}
+	if parsed.Scheme != "https" && parsed.Scheme != "http" {
+		return fmt.Errorf("youtrack url scheme must be http or https: %q", c.BaseURL)
 	}
 	if strings.TrimSpace(c.Token) == "" {
 		return errors.New("youtrack token is required")

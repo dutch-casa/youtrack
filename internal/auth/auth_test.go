@@ -43,6 +43,28 @@ func TestStoreSaveLoadDelete(t *testing.T) {
 	}
 }
 
+func TestStoreSaveTightensExistingDirectory(t *testing.T) {
+	clearCredentialEnv(t)
+	dir := filepath.Join(t.TempDir(), "youtrack")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		t.Fatalf("create config dir: %v", err)
+	}
+	path := filepath.Join(dir, "config.json")
+	store := NewStore(path)
+
+	if err := store.Save(Credentials{BaseURL: "https://example.youtrack.cloud", Token: "perm:test"}); err != nil {
+		t.Fatalf("Save() error = %v", err)
+	}
+
+	info, err := os.Stat(dir)
+	if err != nil {
+		t.Fatalf("stat config dir: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o700 {
+		t.Fatalf("config dir mode = %o, want 0700", got)
+	}
+}
+
 func TestEnsureNonInteractiveMissingAuthIsActionable(t *testing.T) {
 	clearCredentialEnv(t)
 	store := NewStore(filepath.Join(t.TempDir(), "missing.json"))
@@ -68,6 +90,7 @@ func TestCredentialsValidate(t *testing.T) {
 		{name: "valid", creds: Credentials{BaseURL: "https://example.youtrack.cloud", Token: "perm:test"}},
 		{name: "missing url", creds: Credentials{Token: "perm:test"}, wantErr: true},
 		{name: "relative url", creds: Credentials{BaseURL: "example", Token: "perm:test"}, wantErr: true},
+		{name: "unsupported scheme", creds: Credentials{BaseURL: "ftp://example.youtrack.cloud", Token: "perm:test"}, wantErr: true},
 		{name: "missing token", creds: Credentials{BaseURL: "https://example.youtrack.cloud"}, wantErr: true},
 	}
 
