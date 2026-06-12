@@ -316,6 +316,45 @@ func TestUploadAttachmentsRequestBody(t *testing.T) {
 	}
 }
 
+func TestActivitiesRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/activities" {
+			t.Fatalf("path = %s, want activities path", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("categories"); got != "CustomFieldCategory,CommentsCategory" {
+			t.Fatalf("categories = %q", got)
+		}
+		if got := r.URL.Query().Get("reverse"); got != "true" {
+			t.Fatalf("reverse = %q", got)
+		}
+		if got := r.URL.Query().Get("author"); got != "me" {
+			t.Fatalf("author = %q", got)
+		}
+		if fields := r.URL.Query().Get("fields"); !strings.Contains(fields, "added") || !strings.Contains(fields, "removed") {
+			t.Fatalf("fields = %q, want activity fields", fields)
+		}
+		_, _ = w.Write([]byte(`[{"id":"a-1","$type":"CustomFieldActivityItem","timestamp":1648110830229,"author":{"login":"jane"},"field":{"name":"State"},"added":[{"name":"Fixed"}],"removed":[{"name":"Open"}]}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	activities, err := client.Activities(context.Background(), ActivityListOptions{
+		IssueID:    "ABC-1",
+		Categories: []string{"CustomFieldCategory", "CommentsCategory"},
+		Reverse:    true,
+		Author:     "me",
+	})
+	if err != nil {
+		t.Fatalf("Activities() error = %v", err)
+	}
+	if len(activities) != 1 {
+		t.Fatalf("Activities() = %#v, want one activity", activities)
+	}
+	if summary := activities[0].Summary(); summary != "State +Fixed -Open" {
+		t.Fatalf("Activity Summary() = %q", summary)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -365,6 +404,12 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.UploadAttachments(context.Background(), UploadAttachmentsRequest{IssueID: "ABC-1"}); err == nil {
 		t.Fatal("UploadAttachments() error = nil, want file validation")
+	}
+	if _, err := client.Activities(context.Background(), ActivityListOptions{}); err == nil {
+		t.Fatal("Activities() error = nil, want issue id validation")
+	}
+	if _, err := client.Activities(context.Background(), ActivityListOptions{IssueID: "ABC-1"}); err == nil {
+		t.Fatal("Activities() error = nil, want category validation")
 	}
 }
 

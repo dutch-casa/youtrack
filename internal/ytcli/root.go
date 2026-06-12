@@ -69,6 +69,7 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.commentsCommand())
 	cmd.AddCommand(a.workItemsCommand())
 	cmd.AddCommand(a.attachmentsCommand())
+	cmd.AddCommand(a.activitiesCommand())
 	cmd.AddCommand(a.commandsCommand())
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
@@ -603,6 +604,61 @@ func (a *app) attachmentsCommand() *cobra.Command {
 		Short:   "Work with issue attachments",
 	}
 	cmd.AddCommand(list, add)
+	return cmd
+}
+
+func (a *app) activitiesCommand() *cobra.Command {
+	var top int
+	var skip int
+	var categories []string
+	var reverse bool
+	var startMs int64
+	var endMs int64
+	var author string
+
+	list := &cobra.Command{
+		Use:   "list ISSUE",
+		Short: "List issue activity history",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			effectiveCategories := categories
+			if !cmd.Flags().Changed("category") {
+				effectiveCategories = youtrack.DefaultActivityCategories()
+			}
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			activities, err := client.Activities(cmd.Context(), youtrack.ActivityListOptions{
+				IssueID:    args[0],
+				Categories: effectiveCategories,
+				Top:        top,
+				Skip:       skip,
+				Reverse:    reverse,
+				StartMs:    startMs,
+				EndMs:      endMs,
+				Author:     author,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, activities)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum activities to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of activities to skip")
+	list.Flags().StringArrayVar(&categories, "category", nil, "activity category id; repeat to narrow history")
+	list.Flags().BoolVar(&reverse, "reverse", true, "return newest activities first")
+	list.Flags().Int64Var(&startMs, "start-ms", 0, "start timestamp as Unix milliseconds")
+	list.Flags().Int64Var(&endMs, "end-ms", 0, "end timestamp as Unix milliseconds")
+	list.Flags().StringVar(&author, "author", "", "filter by author id, login, Hub id, or me")
+
+	cmd := &cobra.Command{
+		Use:     "activities",
+		Aliases: []string{"activity", "history"},
+		Short:   "Work with issue activity history",
+	}
+	cmd.AddCommand(list)
 	return cmd
 }
 

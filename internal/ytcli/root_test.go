@@ -20,7 +20,7 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "Agent-friendly YouTrack CLI") {
 		t.Fatalf("help output = %q", out.String())
 	}
-	for _, command := range []string{"projects", "users", "commands", "attachments"} {
+	for _, command := range []string{"projects", "users", "commands", "attachments", "activities"} {
 		if !strings.Contains(out.String(), command) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}
@@ -173,5 +173,56 @@ func TestAttachmentsAddUploadsFile(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "evidence.txt") {
 		t.Fatalf("output = %q, want attachment name", out.String())
+	}
+}
+
+func TestActivitiesListUsesDefaultCategories(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/activities" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		categories := r.URL.Query().Get("categories")
+		if !strings.Contains(categories, "CommentsCategory") || !strings.Contains(categories, "CustomFieldCategory") {
+			t.Fatalf("categories = %q, want default activity categories", categories)
+		}
+		if got := r.URL.Query().Get("reverse"); got != "true" {
+			t.Fatalf("reverse = %q, want true", got)
+		}
+		_, _ = w.Write([]byte(`[{"id":"a-1","$type":"CommentActivityItem","timestamp":1,"author":{"login":"jane"},"target":{"text":"Looks fixed"}}]`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"history", "list", "ABC-1",
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Looks fixed") {
+		t.Fatalf("output = %q, want activity target", out.String())
+	}
+}
+
+func TestActivitiesListNarrowsCategories(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.URL.Query().Get("categories"); got != "CommentsCategory" {
+			t.Fatalf("categories = %q, want explicit category only", got)
+		}
+		_, _ = w.Write([]byte(`[]`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"activities", "list", "ABC-1", "--category", "CommentsCategory",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
 	}
 }

@@ -70,6 +70,11 @@ func writeTable(w io.Writer, value any) error {
 	case youtrack.Attachment:
 		fmt.Fprintln(tw, "ID\tNAME\tSIZE\tTYPE\tAUTHOR")
 		fmt.Fprintf(tw, "%s\t%s\t%d\t%s\t%s\n", rows.ID, rows.Name, rows.Size, rows.MimeType, displayName(rows.Author))
+	case []youtrack.Activity:
+		fmt.Fprintln(tw, "TIME\tAUTHOR\tTYPE\tSUMMARY")
+		for _, activity := range rows {
+			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", activity.Timestamp, displayName(activity.Author), activity.Type, activity.Summary())
+		}
 	case youtrack.CommandResult:
 		fmt.Fprintln(tw, "QUERY\tISSUES")
 		fmt.Fprintf(tw, "%s\t%d\n", rows.Query, len(rows.Issues))

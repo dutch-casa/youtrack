@@ -102,6 +102,27 @@ type Attachment struct {
 	ThumbnailURL string `json:"thumbnailURL,omitempty"`
 }
 
+type Activity struct {
+	ID           string           `json:"id"`
+	Type         string           `json:"$type,omitempty"`
+	Author       User             `json:"author,omitempty"`
+	Timestamp    int64            `json:"timestamp,omitempty"`
+	Target       json.RawMessage  `json:"target,omitempty"`
+	TargetMember string           `json:"targetMember,omitempty"`
+	Field        ActivityField    `json:"field,omitempty"`
+	Added        json.RawMessage  `json:"added,omitempty"`
+	Removed      json.RawMessage  `json:"removed,omitempty"`
+	Category     ActivityCategory `json:"category,omitempty"`
+}
+
+type ActivityField struct {
+	Name string `json:"name,omitempty"`
+}
+
+type ActivityCategory struct {
+	ID string `json:"id,omitempty"`
+}
+
 type IssueListOptions struct {
 	Query string
 	Top   int
@@ -167,6 +188,17 @@ type AttachmentFile struct {
 type UploadAttachmentsRequest struct {
 	IssueID string
 	Files   []AttachmentFile
+}
+
+type ActivityListOptions struct {
+	IssueID    string
+	Categories []string
+	Top        int
+	Skip       int
+	Reverse    bool
+	StartMs    int64
+	EndMs      int64
+	Author     string
 }
 
 type APIError struct {
@@ -402,6 +434,61 @@ func (c *Client) UploadAttachments(ctx context.Context, req UploadAttachmentsReq
 	return attachments, err
 }
 
+func (c *Client) Activities(ctx context.Context, opts ActivityListOptions) ([]Activity, error) {
+	if strings.TrimSpace(opts.IssueID) == "" {
+		return nil, errors.New("issue id is required")
+	}
+	if len(opts.Categories) == 0 {
+		return nil, errors.New("at least one activity category is required")
+	}
+	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
+	values.Set("fields", activityFields)
+	values.Set("categories", strings.Join(opts.Categories, ","))
+	if opts.Reverse {
+		values.Set("reverse", "true")
+	}
+	if opts.StartMs > 0 {
+		values.Set("start", fmt.Sprint(opts.StartMs))
+	}
+	if opts.EndMs > 0 {
+		values.Set("end", fmt.Sprint(opts.EndMs))
+	}
+	if opts.Author != "" {
+		values.Set("author", opts.Author)
+	}
+
+	var activities []Activity
+	err := c.get(ctx, "/api/issues/"+url.PathEscape(opts.IssueID)+"/activities", values, &activities)
+	return activities, err
+}
+
+func DefaultActivityCategories() []string {
+	return append([]string(nil), defaultActivityCategories...)
+}
+
+func (a Activity) Summary() string {
+	parts := make([]string, 0, 4)
+	if a.Field.Name != "" {
+		parts = append(parts, a.Field.Name)
+	}
+	if a.TargetMember != "" {
+		parts = append(parts, a.TargetMember)
+	}
+	if added := activityValues(a.Added); added != "" {
+		parts = append(parts, "+"+added)
+	}
+	if removed := activityValues(a.Removed); removed != "" {
+		parts = append(parts, "-"+removed)
+	}
+	if target := activityValues(a.Target); target != "" {
+		parts = append(parts, target)
+	}
+	if len(parts) == 0 {
+		return a.Type
+	}
+	return strings.Join(parts, " ")
+}
+
 func (c *Client) ApplyCommand(ctx context.Context, req ApplyCommandRequest) (CommandResult, error) {
 	if strings.TrimSpace(req.IssueID) == "" {
 		return CommandResult{}, errors.New("issue id is required")
@@ -550,6 +637,29 @@ const projectFields = "id,shortName,name,archived,leader(id,login,name,fullName,
 const userFields = "id,login,name,fullName,email,online,banned"
 const workItemFields = "id,text,date,duration(id,minutes,presentation),type(id,name),author(id,login,name,fullName,email),creator(id,login,name,fullName,email)"
 const attachmentFields = "id,name,author(id,login,name,fullName,email),created,updated,size,extension,mimeType,metaData,url,thumbnailURL"
+const activityFields = "id,$type,author(id,login,name,fullName,email),timestamp,target(id,text,name,summary,idReadable),targetMember,field(name),added(id,name,login,text,presentation),removed(id,name,login,text,presentation),category(id)"
+
+var defaultActivityCategories = []string{
+	"IssueCreatedCategory",
+	"SummaryCategory",
+	"DescriptionCategory",
+	"CustomFieldCategory",
+	"CommentsCategory",
+	"CommentTextCategory",
+	"AttachmentsCategory",
+	"LinksCategory",
+	"WorkItemCategory",
+	"ProjectCategory",
+	"IssueResolvedCategory",
+	"IssueVisibilityCategory",
+	"TagsCategory",
+	"VotersCategory",
+	"TotalVotesCategory",
+	"SprintCategory",
+	"VcsChangeCategory",
+	"VcsChangeStateCategory",
+	"PullRequestChangeCategory",
+}
 
 func pageValues(opts PageOptions) url.Values {
 	values := url.Values{}
@@ -560,4 +670,56 @@ func pageValues(opts PageOptions) url.Values {
 		values.Set("$skip", fmt.Sprint(opts.Skip))
 	}
 	return values
+}
+
+func activityValues(data json.RawMessage) string {
+	if len(data) == 0 || string(data) == "null" {
+		return ""
+	}
+	if value := activityValue(data); value != "" {
+		return value
+	}
+
+	var values []json.RawMessage
+	if err := json.Unmarshal(data, &values); err == nil {
+		parts := make([]string, 0, len(values))
+		for _, data := range values {
+			value := activityValue(data)
+			if value != "" {
+				parts = append(parts, value)
+			}
+		}
+		return strings.Join(parts, ", ")
+	}
+	return ""
+}
+
+func activityValue(data json.RawMessage) string {
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		return text
+	}
+
+	var object struct {
+		Presentation string `json:"presentation"`
+		Name         string `json:"name"`
+		Login        string `json:"login"`
+		Text         string `json:"text"`
+		Summary      string `json:"summary"`
+		IDReadable   string `json:"idReadable"`
+		ID           string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &object); err == nil {
+		return firstNonEmpty(object.Presentation, object.Name, object.Login, object.Text, object.Summary, object.IDReadable, object.ID)
+	}
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
