@@ -33,12 +33,14 @@ See also:
 - [0029 Raw Query Parameters](adr/0029-raw-query-parameters.md)
 - [0030 Raw Response Files](adr/0030-raw-response-files.md)
 - [0031 Custom Field Projection Boundary](adr/0031-custom-field-projection-boundary.md)
+- [0032 Browser-Assisted Token Auth](adr/0032-browser-assisted-token-auth.md)
+- [0033 Top-Level Upgrade Command](adr/0033-top-level-upgrade-command.md)
 
 ## `internal/auth`
 
 Secret: This module hides how YouTrack credentials are discovered, prompted for, and stored locally.
 
-Role: Callers ask for usable credentials. The module decides whether to use environment variables, an existing config file, or a terminal prompt, and it owns file permissions for persisted tokens.
+Role: Callers ask for usable credentials. The module decides whether to use environment variables, an existing config file, or a terminal prompt, and it owns file permissions for persisted tokens. Browser-assisted setup remains a CLI entry behavior that feeds the same permanent-token credential shape into this module.
 
 ## `internal/youtrack`
 
@@ -50,7 +52,7 @@ Role: Callers use typed operations for common issue, comment, attachment, link, 
 
 Secret: This module hides the command-line contract users and agents call.
 
-Role: It wires flags, subcommands, output defaults, and authentication into a stable CLI surface. JSON is the default because the primary caller is an agent.
+Role: It wires flags, subcommands, output defaults, authentication, and binary upgrade entry points into a stable CLI surface. JSON is the default because the primary caller is an agent.
 
 ## `internal/textinput`
 

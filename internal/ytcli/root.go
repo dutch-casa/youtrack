@@ -1,6 +1,7 @@
 package ytcli
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
@@ -8,8 +9,11 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
+	"time"
 
 	"github.com/dutchcaz/youtrack/internal/auth"
 	"github.com/dutchcaz/youtrack/internal/output"
@@ -19,6 +23,10 @@ import (
 	"github.com/spf13/cobra"
 )
 
+const defaultInstallerURL = "https://raw.githubusercontent.com/dutch-casa/youtrack/main/scripts/install.sh"
+
+var installerHTTPClient = &http.Client{Timeout: 30 * time.Second}
+
 type app struct {
 	in         io.Reader
 	out        io.Writer
@@ -27,6 +35,9 @@ type app struct {
 	configPath string
 	format     output.Format
 }
+
+var openBrowser = openURL
+var runInstallScript = runInstallerScript
 
 func Execute(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) error {
 	configPath, err := auth.DefaultPath()
@@ -76,33 +87,48 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.commandsCommand())
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
+	cmd.AddCommand(a.upgradeCommand())
 	return cmd
 }
 
 func (a *app) authCommand() *cobra.Command {
 	var baseURL string
 	var token string
+	var open bool
 
 	login := &cobra.Command{
 		Use:   "login",
 		Short: "Save YouTrack URL and permanent token",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			creds := auth.Credentials{BaseURL: baseURL, Token: token}
-			if creds.BaseURL == "" || creds.Token == "" {
+			if baseURL == "" || token == "" {
 				if !auth.CanPrompt(a.in) {
 					return errors.New("non-interactive login requires --url and --token")
 				}
-				prompted, err := auth.Prompt(a.in, a.errOut)
-				if err != nil {
+				if baseURL == "" {
+					promptedURL, err := auth.PromptURL(a.in, a.errOut)
+					if err != nil {
+						return err
+					}
+					baseURL = promptedURL
+				}
+				if open {
+					if err := openTokenSetup(baseURL, a.errOut); err != nil {
+						return err
+					}
+				}
+				if token == "" {
+					promptedToken, err := auth.PromptToken(a.in, a.errOut)
+					if err != nil {
+						return err
+					}
+					token = promptedToken
+				}
+			} else if open {
+				if err := openTokenSetup(baseURL, a.errOut); err != nil {
 					return err
 				}
-				if creds.BaseURL == "" {
-					creds.BaseURL = prompted.BaseURL
-				}
-				if creds.Token == "" {
-					creds.Token = prompted.Token
-				}
 			}
+			creds := auth.Credentials{BaseURL: baseURL, Token: token}
 			if err := a.store.Save(creds); err != nil {
 				return err
 			}
@@ -114,6 +140,7 @@ func (a *app) authCommand() *cobra.Command {
 	}
 	login.Flags().StringVar(&baseURL, "url", "", "YouTrack base URL, for example https://example.youtrack.cloud")
 	login.Flags().StringVar(&token, "token", "", "YouTrack permanent token")
+	login.Flags().BoolVar(&open, "open", false, "open the YouTrack instance before prompting for a permanent token")
 
 	logout := &cobra.Command{
 		Use:   "logout",
@@ -885,6 +912,51 @@ func parseRawHeaders(values []string) (http.Header, error) {
 	return headers, nil
 }
 
+func (a *app) upgradeCommand() *cobra.Command {
+	var binDir string
+	var name string
+	var installerURL string
+
+	cmd := &cobra.Command{
+		Use:   "upgrade",
+		Short: "Update this yt binary with the public installer",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if binDir == "" || name == "" {
+				executable, err := os.Executable()
+				if err != nil {
+					return fmt.Errorf("current executable: %w", err)
+				}
+				if binDir == "" {
+					binDir = filepath.Dir(executable)
+				}
+				if name == "" {
+					name = filepath.Base(executable)
+				}
+			}
+			if name == "" || strings.ContainsAny(name, `/\`) {
+				return errors.New("--name must be a file name, not a path")
+			}
+
+			script, err := downloadInstaller(cmd.Context(), installerURL)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(a.errOut, "Updating %s\n", filepath.Join(binDir, name))
+			if err := runInstallScript(cmd.Context(), script, binDir, name, a.out, a.errOut); err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, map[string]any{
+				"updated": true,
+				"path":    filepath.Join(binDir, name),
+			})
+		},
+	}
+	cmd.Flags().StringVar(&binDir, "bin-dir", "", "directory to install into; defaults to this executable's directory")
+	cmd.Flags().StringVar(&name, "name", "", "installed binary name; defaults to this executable's file name")
+	cmd.Flags().StringVar(&installerURL, "installer-url", defaultInstallerURL, "installer script URL")
+	return cmd
+}
+
 func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 	var query string
 	var top int
@@ -924,6 +996,73 @@ func (a *app) client() (*youtrack.Client, error) {
 		return nil, err
 	}
 	return youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil), nil
+}
+
+func openTokenSetup(baseURL string, out io.Writer) error {
+	creds := auth.Credentials{BaseURL: baseURL, Token: "placeholder"}
+	if err := creds.Validate(); err != nil {
+		return err
+	}
+	instanceURL := creds.NormalizedBaseURL()
+	fmt.Fprintf(out, "Opening %s\n", instanceURL)
+	fmt.Fprintln(out, "Create a token from Profile -> Account Security -> Tokens -> New token.")
+	fmt.Fprintln(out, "Use the YouTrack scope for normal issue work; add YouTrack Administration only if this token needs admin endpoints.")
+	return openBrowser(instanceURL)
+}
+
+func openURL(rawURL string) error {
+	var cmd *exec.Cmd
+	switch runtime.GOOS {
+	case "darwin":
+		cmd = exec.Command("open", rawURL)
+	case "windows":
+		cmd = exec.Command("rundll32", "url.dll,FileProtocolHandler", rawURL)
+	default:
+		cmd = exec.Command("xdg-open", rawURL)
+	}
+	if err := cmd.Start(); err != nil {
+		return fmt.Errorf("open browser: %w", err)
+	}
+	return nil
+}
+
+func downloadInstaller(ctx context.Context, installerURL string) ([]byte, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, installerURL, nil)
+	if err != nil {
+		return nil, fmt.Errorf("installer request: %w", err)
+	}
+	resp, err := installerHTTPClient.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("download installer: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		_, _ = io.Copy(io.Discard, resp.Body)
+		return nil, fmt.Errorf("download installer: HTTP %d", resp.StatusCode)
+	}
+
+	const maxInstallerBytes = 2 << 20
+	limited := io.LimitReader(resp.Body, maxInstallerBytes+1)
+	script, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, fmt.Errorf("read installer: %w", err)
+	}
+	if len(script) > maxInstallerBytes {
+		return nil, errors.New("installer script is too large")
+	}
+	return script, nil
+}
+
+func runInstallerScript(ctx context.Context, script []byte, binDir, name string, out, errOut io.Writer) error {
+	cmd := exec.CommandContext(ctx, "sh", "-s", "--", "--bin-dir", binDir, "--name", name)
+	cmd.Stdin = bytes.NewReader(script)
+	cmd.Stdout = out
+	cmd.Stderr = errOut
+	if err := cmd.Run(); err != nil {
+		return fmt.Errorf("run installer: %w", err)
+	}
+	return nil
 }
 
 type formatValue output.Format

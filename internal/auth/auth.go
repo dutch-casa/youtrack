@@ -132,29 +132,45 @@ func (s Store) Ensure(in io.Reader, out io.Writer) (Credentials, error) {
 }
 
 func Prompt(in io.Reader, out io.Writer) (Credentials, error) {
-	reader := bufio.NewReader(in)
-
-	fmt.Fprint(out, "YouTrack URL: ")
-	baseURL, err := reader.ReadString('\n')
+	baseURL, err := PromptURL(in, out)
 	if err != nil {
-		return Credentials{}, fmt.Errorf("read url: %w", err)
+		return Credentials{}, err
 	}
 
-	fmt.Fprint(out, "Permanent token: ")
-	token, err := readSecret(in, reader)
+	token, err := PromptToken(in, out)
 	if err != nil {
-		return Credentials{}, fmt.Errorf("read token: %w", err)
+		return Credentials{}, err
 	}
-	fmt.Fprintln(out)
 
 	creds := Credentials{
-		BaseURL: strings.TrimSpace(baseURL),
-		Token:   strings.TrimSpace(token),
+		BaseURL: baseURL,
+		Token:   token,
 	}
 	if err := creds.Validate(); err != nil {
 		return Credentials{}, err
 	}
 	return creds, nil
+}
+
+func PromptURL(in io.Reader, out io.Writer) (string, error) {
+	reader := bufio.NewReader(in)
+	fmt.Fprint(out, "YouTrack URL: ")
+	baseURL, err := reader.ReadString('\n')
+	if err != nil {
+		return "", fmt.Errorf("read url: %w", err)
+	}
+	return strings.TrimSpace(baseURL), nil
+}
+
+func PromptToken(in io.Reader, out io.Writer) (string, error) {
+	reader := bufio.NewReader(in)
+	fmt.Fprint(out, "Permanent token: ")
+	token, err := readSecret(in, reader)
+	if err != nil {
+		return "", fmt.Errorf("read token: %w", err)
+	}
+	fmt.Fprintln(out)
+	return strings.TrimSpace(token), nil
 }
 
 func (c Credentials) Validate() error {

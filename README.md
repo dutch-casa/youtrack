@@ -12,6 +12,12 @@ curl -fsSL https://raw.githubusercontent.com/dutch-casa/youtrack/main/scripts/in
 
 That installs `yt` to `~/.local/bin`.
 
+To update later:
+
+```sh
+yt upgrade
+```
+
 If you already have the checkout:
 
 ```sh
@@ -34,11 +40,13 @@ Authentication uses a YouTrack permanent token, not an OAuth browser grant. Crea
 yt auth login --url https://example.youtrack.cloud --token perm:...
 ```
 
-For a guided terminal prompt, run:
+For the easiest guided setup, let `yt` open your YouTrack instance and walk you through token creation:
 
 ```sh
-yt auth login
+yt auth login --open
 ```
+
+This works for YouTrack Cloud and self-hosted instances because it only needs your instance URL and a token generated in your own profile.
 
 You can also avoid local config with environment variables:
 

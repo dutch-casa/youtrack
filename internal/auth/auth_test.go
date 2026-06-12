@@ -81,6 +81,27 @@ func TestEnsureNonInteractiveMissingAuthIsActionable(t *testing.T) {
 	}
 }
 
+func TestPromptSplitsURLAndToken(t *testing.T) {
+	var out bytes.Buffer
+
+	baseURL, err := PromptURL(strings.NewReader("https://example.youtrack.cloud\n"), &out)
+	if err != nil {
+		t.Fatalf("PromptURL() error = %v", err)
+	}
+	if baseURL != "https://example.youtrack.cloud" {
+		t.Fatalf("PromptURL() = %q", baseURL)
+	}
+
+	out.Reset()
+	token, err := PromptToken(strings.NewReader("perm:secret\n"), &out)
+	if err != nil {
+		t.Fatalf("PromptToken() error = %v", err)
+	}
+	if token != "perm:secret" {
+		t.Fatalf("PromptToken() = %q", token)
+	}
+}
+
 func TestCredentialsValidate(t *testing.T) {
 	tests := []struct {
 		name    string

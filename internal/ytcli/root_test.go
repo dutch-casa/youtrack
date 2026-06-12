@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -22,7 +23,7 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "Agent-friendly YouTrack CLI") {
 		t.Fatalf("help output = %q", out.String())
 	}
-	for _, command := range []string{"projects", "users", "commands", "attachments", "activities", "links"} {
+	for _, command := range []string{"projects", "users", "commands", "attachments", "activities", "links", "upgrade"} {
 		if !strings.Contains(out.String(), command) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}
@@ -81,6 +82,90 @@ func TestAuthLoginStatusLogout(t *testing.T) {
 	}
 	if !logoutResult.Removed {
 		t.Fatalf("auth logout output = %#v, want removed true", logoutResult)
+	}
+}
+
+func TestAuthLoginOpenStartsBrowserSetup(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	var opened []string
+	previousOpenBrowser := openBrowser
+	openBrowser = func(rawURL string) error {
+		opened = append(opened, rawURL)
+		return nil
+	}
+	t.Cleanup(func() {
+		openBrowser = previousOpenBrowser
+	})
+
+	err := Execute(context.Background(), []string{
+		"--config", config,
+		"auth", "login",
+		"--open",
+		"--url", "https://example.youtrack.cloud/",
+		"--token", "perm:secret",
+	}, strings.NewReader(""), &out, &errOut)
+	if err != nil {
+		t.Fatalf("auth login --open error = %v", err)
+	}
+	if len(opened) != 1 || opened[0] != "https://example.youtrack.cloud" {
+		t.Fatalf("opened = %#v, want normalized instance URL", opened)
+	}
+	if !strings.Contains(errOut.String(), "Account Security") {
+		t.Fatalf("stderr = %q, want token setup guidance", errOut.String())
+	}
+	if strings.Contains(errOut.String(), "perm:secret") || strings.Contains(out.String(), "perm:secret") {
+		t.Fatalf("auth login --open leaked token; stdout=%q stderr=%q", out.String(), errOut.String())
+	}
+}
+
+func TestUpgradeRunsDownloadedInstallerForCurrentBinary(t *testing.T) {
+	const installerScript = "echo installer\n"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write([]byte(installerScript))
+	}))
+	t.Cleanup(server.Close)
+
+	var installed struct {
+		script string
+		binDir string
+		name   string
+	}
+	previousRunInstallScript := runInstallScript
+	runInstallScript = func(ctx context.Context, script []byte, binDir, name string, out, errOut io.Writer) error {
+		installed.script = string(script)
+		installed.binDir = binDir
+		installed.name = name
+		return nil
+	}
+	t.Cleanup(func() {
+		runInstallScript = previousRunInstallScript
+	})
+
+	targetDir := t.TempDir()
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"upgrade",
+		"--installer-url", server.URL,
+		"--bin-dir", targetDir,
+		"--name", "yt-test",
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("upgrade error = %v", err)
+	}
+	if installed.script != installerScript || installed.binDir != targetDir || installed.name != "yt-test" {
+		t.Fatalf("installer invocation = %#v", installed)
+	}
+	var result struct {
+		Updated bool   `json:"updated"`
+		Path    string `json:"path"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("upgrade output is not JSON: %v; output %q", err, out.String())
+	}
+	if !result.Updated || result.Path != filepath.Join(targetDir, "yt-test") {
+		t.Fatalf("upgrade output = %#v", result)
 	}
 }
 
