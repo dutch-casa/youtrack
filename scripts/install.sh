@@ -4,20 +4,22 @@ set -eu
 program_name="yt"
 prefix="${PREFIX:-$HOME/.local}"
 bin_dir="${BINDIR:-}"
+repo_url="${YOUTRACK_REPO_URL:-https://github.com/dutch-casa/youtrack}"
 dry_run=0
 
 usage() {
 	cat <<'USAGE'
-Install the YouTrack CLI from this checkout.
+Install the YouTrack CLI.
 
 Usage:
-  scripts/install.sh [--prefix DIR] [--bin-dir DIR] [--name NAME] [--dry-run]
+  scripts/install.sh [--prefix DIR] [--bin-dir DIR] [--name NAME] [--repo URL] [--dry-run]
   scripts/install.sh --help
 
 Options:
   --prefix DIR    Installation prefix. Defaults to $PREFIX or ~/.local.
   --bin-dir DIR   Directory for the installed binary. Defaults to PREFIX/bin.
   --name NAME     Installed binary name. Defaults to yt.
+  --repo URL      Git repository to clone when not run from a checkout.
   --dry-run       Print what would happen without building or installing.
   --help          Show this help.
 
@@ -25,6 +27,8 @@ Environment:
   PREFIX          Default prefix when --prefix is not passed.
   BINDIR          Default binary directory when --bin-dir is not passed.
   GO              Go command to use. Defaults to go.
+  YOUTRACK_REPO_URL
+                  Default repository URL when --repo is not passed.
 USAGE
 }
 
@@ -54,6 +58,11 @@ while [ "$#" -gt 0 ]; do
 			program_name=$2
 			shift 2
 			;;
+		--repo)
+			[ "$#" -ge 2 ] || die "--repo requires a repository URL"
+			repo_url=$2
+			shift 2
+			;;
 		--dry-run)
 			dry_run=1
 			shift
@@ -73,11 +82,37 @@ case "$program_name" in
 	*/*) die "--name must be a file name, not a path" ;;
 esac
 
-script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
-repo_root=$(CDPATH= cd -- "$script_dir/.." && pwd)
+clone_dir=""
+build_dir=""
 
-[ -f "$repo_root/go.mod" ] || die "could not find go.mod at $repo_root"
-[ -d "$repo_root/cmd/yt" ] || die "could not find CLI package at $repo_root/cmd/yt"
+cleanup() {
+	if [ -n "$build_dir" ]; then
+		rm -rf "$build_dir"
+	fi
+	if [ -n "$clone_dir" ]; then
+		rm -rf "$clone_dir"
+	fi
+}
+trap cleanup EXIT INT TERM
+
+checkout_root() {
+	candidate=$1
+	if [ -f "$candidate/go.mod" ] && [ -d "$candidate/cmd/yt" ]; then
+		CDPATH= cd -- "$candidate" && pwd
+		return 0
+	fi
+	return 1
+}
+
+script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" 2>/dev/null && pwd || pwd)
+repo_root=$(checkout_root "$script_dir/.." || checkout_root "." || true)
+if [ -z "$repo_root" ]; then
+	command -v git >/dev/null 2>&1 || die "git is required when install.sh is not run from a checkout"
+	clone_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-src.XXXXXX")
+	say "cloning $repo_url"
+	git clone --depth 1 "$repo_url" "$clone_dir/youtrack"
+	repo_root=$(checkout_root "$clone_dir/youtrack") || die "cloned repository does not look like YouTrack CLI"
+fi
 
 if [ -z "$bin_dir" ]; then
 	bin_dir="$prefix/bin"
@@ -98,17 +133,13 @@ fi
 
 command -v "$go_cmd" >/dev/null 2>&1 || die "Go is required; install Go or set GO=/path/to/go"
 
-tmp_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-install.XXXXXX")
-cleanup() {
-	rm -rf "$tmp_dir"
-}
-trap cleanup EXIT INT TERM
+build_dir=$(mktemp -d "${TMPDIR:-/tmp}/youtrack-build.XXXXXX")
 
 say "building $program_name"
-(cd "$repo_root" && "$go_cmd" build -trimpath -ldflags "-s -w" -o "$tmp_dir/$program_name" ./cmd/yt)
+(cd "$repo_root" && "$go_cmd" build -trimpath -ldflags "-s -w" -o "$build_dir/$program_name" ./cmd/yt)
 
 mkdir -p "$bin_dir"
-install -m 0755 "$tmp_dir/$program_name" "$target"
+install -m 0755 "$build_dir/$program_name" "$target"
 
 say "installed $target"
 

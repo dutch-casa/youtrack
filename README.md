@@ -7,7 +7,7 @@ Native Go CLI for JetBrains YouTrack. The default mode is non-interactive and JS
 Paste this into a terminal on a machine where Go is installed:
 
 ```sh
-tmp=$(mktemp -d) && git clone https://github.com/dutch-casa/youtrack "$tmp/youtrack" && "$tmp/youtrack/scripts/install.sh"
+curl -fsSL https://raw.githubusercontent.com/dutch-casa/youtrack/main/scripts/install.sh | sh
 ```
 
 That installs `yt` to `~/.local/bin`.
