@@ -112,14 +112,25 @@ func TestAuthLoginOpenStartsBrowserSetup(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth login --open error = %v", err)
 	}
-	if len(opened) != 1 || opened[0] != "https://example.youtrack.cloud" {
-		t.Fatalf("opened = %#v, want normalized instance URL", opened)
+	if len(opened) != 1 || opened[0] != "https://example.youtrack.cloud/users/me?tab=account-security" {
+		t.Fatalf("opened = %#v, want account security URL", opened)
 	}
 	if !strings.Contains(errOut.String(), "Account Security") {
 		t.Fatalf("stderr = %q, want token setup guidance", errOut.String())
 	}
 	if strings.Contains(errOut.String(), "perm:secret") || strings.Contains(out.String(), "perm:secret") {
 		t.Fatalf("auth login --open leaked token; stdout=%q stderr=%q", out.String(), errOut.String())
+	}
+}
+
+func TestTokenSetupURLPreservesSelfHostedBasePath(t *testing.T) {
+	got, err := tokenSetupURL("https://youtrack.example.com/youtrack/")
+	if err != nil {
+		t.Fatalf("tokenSetupURL() error = %v", err)
+	}
+	want := "https://youtrack.example.com/youtrack/users/me?tab=account-security"
+	if got != want {
+		t.Fatalf("tokenSetupURL() = %q, want %q", got, want)
 	}
 }
 

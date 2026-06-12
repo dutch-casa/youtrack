@@ -1227,15 +1227,33 @@ func missingAuthError() error {
 }
 
 func openTokenSetup(baseURL string, out io.Writer) error {
-	creds := auth.Credentials{BaseURL: baseURL, Token: "placeholder"}
-	if err := creds.Validate(); err != nil {
+	setupURL, err := tokenSetupURL(baseURL)
+	if err != nil {
 		return err
 	}
-	instanceURL := creds.NormalizedBaseURL()
-	fmt.Fprintf(out, "Opening %s\n", instanceURL)
+	fmt.Fprintf(out, "Opening %s\n", setupURL)
 	fmt.Fprintln(out, "Create a token from Profile -> Account Security -> Tokens -> New token.")
 	fmt.Fprintln(out, "Use the YouTrack scope for normal issue work; add YouTrack Administration only if this token needs admin endpoints.")
-	return openBrowser(instanceURL)
+	return openBrowser(setupURL)
+}
+
+func tokenSetupURL(baseURL string) (string, error) {
+	creds := auth.Credentials{BaseURL: baseURL, Token: "placeholder"}
+	if err := creds.Validate(); err != nil {
+		return "", err
+	}
+	setupURL, err := url.JoinPath(creds.NormalizedBaseURL(), "users", "me")
+	if err != nil {
+		return "", err
+	}
+	parsed, err := url.Parse(setupURL)
+	if err != nil {
+		return "", err
+	}
+	query := parsed.Query()
+	query.Set("tab", "account-security")
+	parsed.RawQuery = query.Encode()
+	return parsed.String(), nil
 }
 
 func openURL(rawURL string) error {

@@ -14,7 +14,7 @@ YouTrack supports permanent tokens for REST API clients. YouTrack OAuth is provi
 
 Keep permanent-token authentication as the default and universal CLI auth path.
 
-Add browser-assisted setup with `yt auth login --open`. The command opens the provided or prompted YouTrack instance URL, prints the token creation path, prompts for the permanent token, verifies the token against `/api/users/me`, and saves it with the existing local credential store.
+Add browser-assisted setup with `yt auth login --open`. The command opens `<baseurl>/users/me?tab=account-security`, prints the token creation path, prompts for the permanent token, verifies the token against `/api/users/me`, and saves it with the existing local credential store.
 
 Credential verification is enabled by default for `yt auth login` and for the automatic prompt shown when another command needs credentials. `--no-verify` exists for explicit offline/manual login configuration, but the normal successful setup means the CLI has already proven it can authenticate to the instance.
 
@@ -24,7 +24,7 @@ Do not make OAuth the default setup path. A future OAuth command may be added as
 
 The simplest path works for Cloud, self-hosted built-in Hub, and external Hub installations without requiring administrator-created OAuth clients.
 
-The browser still helps users get to the right place, but the CLI does not depend on unstable private profile routes or a token fragment handoff page.
+The browser opens the stable account-security tab for the current user while preserving self-hosted base paths such as `/youtrack`. The CLI does not depend on a token fragment handoff page.
 
 Failed verification does not write credentials. This keeps one-time setup from storing a bad token that later fails in agent workflows.
 
@@ -35,5 +35,5 @@ Agents retain the same non-interactive credential contract: saved config or `YOU
 ## Rejected Alternatives
 
 - Default to OAuth: more familiar in some CLIs, but YouTrack's commonly available OAuth surface is implicit grant, lacks refresh tokens, and is awkward for native CLIs.
-- Deep-link to a private token creation route: faster when it works, but brittle across Cloud, self-hosted, and YouTrack version changes.
+- Deep-link to a private token creation endpoint beyond the account-security tab: faster when it works, but brittle across Cloud, self-hosted, and YouTrack version changes.
 - Generate permanent tokens through the Hub API: not a self-service default for normal users and risks requiring broader administration permissions than the CLI needs.
