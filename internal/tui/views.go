@@ -31,18 +31,44 @@ func (m model) View() string {
 }
 
 func (m model) issueList(width, height int) string {
-	rows := make([]string, 0, min(len(m.issues), height))
-	title := titleStyle.Render("Issues")
+	start, end := visibleIssueRange(m.selected, len(m.issues), height)
+	rows := make([]string, 0, end-start+1)
+	position := 0
+	if len(m.issues) > 0 {
+		position = min(max(m.selected, 0), len(m.issues)-1) + 1
+	}
+	title := titleStyle.Render(fmt.Sprintf("Issues %d/%d", position, len(m.issues)))
 	rows = append(rows, title)
-	for i, issue := range m.issues {
+	for i, issue := range m.issues[start:end] {
+		index := start + i
 		line := fmt.Sprintf("%-12s %s", issue.IDReadable, issue.Summary)
 		line = truncate(line, width-4)
-		if i == m.selected {
+		if index == m.selected {
 			line = selectedStyle.Render(line)
 		}
 		rows = append(rows, line)
 	}
 	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
+}
+
+func visibleIssueRange(selected, total, height int) (int, int) {
+	if total <= 0 || height <= 0 {
+		return 0, 0
+	}
+	selected = min(max(selected, 0), total-1)
+	slots := max(1, height-3)
+	if total <= slots {
+		return 0, total
+	}
+
+	start := selected - slots/2
+	if start < 0 {
+		start = 0
+	}
+	if start+slots > total {
+		start = total - slots
+	}
+	return start, start + slots
 }
 
 func (m model) issuePane(width, height int) string {

@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"strconv"
 	"strings"
 	"testing"
 
@@ -336,6 +337,48 @@ func TestDetailPaneScrollsAndResetsOnSelectionChange(t *testing.T) {
 	m = updated.(model)
 	if m.detail.YOffset != 0 {
 		t.Fatalf("detail YOffset = %d, want reset on selection change", m.detail.YOffset)
+	}
+}
+
+func TestIssueListFollowsSelection(t *testing.T) {
+	issues := make([]youtrack.Issue, 20)
+	for i := range issues {
+		issues[i] = youtrack.Issue{
+			IDReadable: "ABC-" + strconv.Itoa(i+1),
+			Summary:    "Issue " + strconv.Itoa(i+1),
+		}
+	}
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: issues})
+	m = updated.(model)
+	m.selected = 15
+
+	view := m.issueList(40, 8)
+	if !strings.Contains(view, "ABC-16") {
+		t.Fatalf("issueList() = %q, want selected issue", view)
+	}
+	if strings.Contains(view, "ABC-1 ") {
+		t.Fatalf("issueList() = %q, want early issues outside visible window", view)
+	}
+	if !strings.Contains(view, "16/20") {
+		t.Fatalf("issueList() = %q, want position title", view)
+	}
+}
+
+func TestVisibleIssueRangeCentersSelectionWithinBounds(t *testing.T) {
+	start, end := visibleIssueRange(15, 20, 8)
+	if start != 13 || end != 18 {
+		t.Fatalf("visibleIssueRange(15, 20, 8) = %d, %d; want 13, 18", start, end)
+	}
+
+	start, end = visibleIssueRange(19, 20, 8)
+	if start != 15 || end != 20 {
+		t.Fatalf("visibleIssueRange(19, 20, 8) = %d, %d; want 15, 20", start, end)
+	}
+
+	start, end = visibleIssueRange(-4, 2, 8)
+	if start != 0 || end != 2 {
+		t.Fatalf("visibleIssueRange(-4, 2, 8) = %d, %d; want 0, 2", start, end)
 	}
 }
 

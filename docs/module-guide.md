@@ -18,6 +18,7 @@ See also:
 - [0014 TUI Command Actions](adr/0014-tui-command-actions.md)
 - [0015 Charm Text Input](adr/0015-charm-text-input.md)
 - [0016 Scrollable TUI Panes](adr/0016-scrollable-tui-panes.md)
+- [0017 TUI Issue List Window](adr/0017-tui-issue-list-window.md)
 
 ## `internal/auth`
 
