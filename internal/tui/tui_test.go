@@ -11,12 +11,17 @@ import (
 )
 
 type fakeClient struct {
-	issues []youtrack.Issue
-	err    error
+	issues   []youtrack.Issue
+	comments []youtrack.Comment
+	err      error
 }
 
 func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error) {
 	return f.issues, f.err
+}
+
+func (f fakeClient) Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error) {
+	return f.comments, f.err
 }
 
 func TestModelMovementClamps(t *testing.T) {
@@ -53,6 +58,44 @@ func TestModelRefreshSetsLoading(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("refresh command = nil")
+	}
+}
+
+func TestTabLoadsCommentsPane(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	if m.pane != commentsPane {
+		t.Fatalf("pane = %v, want commentsPane", m.pane)
+	}
+	if !m.commentsLoading {
+		t.Fatal("commentsLoading = false, want true")
+	}
+	if cmd == nil {
+		t.Fatal("comment load command = nil")
+	}
+}
+
+func TestCommentsPaneRendersComments(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = commentsPane
+	updated, _ = m.Update(commentsMsg{
+		issueID: "ABC-1",
+		comments: []youtrack.Comment{{
+			Text:   "Looks fixed",
+			Author: youtrack.User{Login: "jane"},
+		}},
+	})
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "Comments") || !strings.Contains(view, "jane: Looks fixed") {
+		t.Fatalf("View() = %q, want comment", view)
 	}
 }
 

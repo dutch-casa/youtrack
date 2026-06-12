@@ -19,7 +19,15 @@ type Options struct {
 
 type Client interface {
 	Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error)
+	Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error)
 }
+
+type pane int
+
+const (
+	detailsPane pane = iota
+	commentsPane
+)
 
 func Run(ctx context.Context, client Client, opts Options, out io.Writer) error {
 	model := newModel(ctx, client, opts)
@@ -38,6 +46,11 @@ type model struct {
 	height   int
 	loading  bool
 	err      error
+	pane     pane
+
+	comments        map[string][]youtrack.Comment
+	commentsLoading bool
+	commentsErr     error
 }
 
 type issuesMsg struct {
@@ -45,11 +58,17 @@ type issuesMsg struct {
 	err    error
 }
 
+type commentsMsg struct {
+	issueID  string
+	comments []youtrack.Comment
+	err      error
+}
+
 func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
 	}
-	return model{ctx: ctx, client: client, opts: opts, loading: true}
+	return model{ctx: ctx, client: client, opts: opts, loading: true, comments: make(map[string][]youtrack.Comment)}
 }
 
 func (m model) Init() tea.Cmd {
@@ -65,23 +84,44 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		case "tab":
+			if m.pane == detailsPane {
+				m.pane = commentsPane
+				return m.withSelectedCommentsLoading()
+			}
+			m.pane = detailsPane
 		case "j", "down":
 			if m.selected < len(m.issues)-1 {
 				m.selected++
+				if m.pane == commentsPane {
+					return m.withSelectedCommentsLoading()
+				}
 			}
 		case "k", "up":
 			if m.selected > 0 {
 				m.selected--
+				if m.pane == commentsPane {
+					return m.withSelectedCommentsLoading()
+				}
 			}
 		case "g", "home":
 			m.selected = 0
+			if m.pane == commentsPane {
+				return m.withSelectedCommentsLoading()
+			}
 		case "G", "end":
 			if len(m.issues) > 0 {
 				m.selected = len(m.issues) - 1
+				if m.pane == commentsPane {
+					return m.withSelectedCommentsLoading()
+				}
 			}
 		case "r":
 			m.loading = true
 			m.err = nil
+			m.comments = make(map[string][]youtrack.Comment)
+			m.commentsErr = nil
+			m.commentsLoading = false
 			return m, m.loadIssues
 		}
 	case issuesMsg:
@@ -90,6 +130,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.issues = msg.issues
 		if m.selected >= len(m.issues) {
 			m.selected = max(0, len(m.issues)-1)
+		}
+	case commentsMsg:
+		if m.currentIssueID() == msg.issueID {
+			m.commentsLoading = false
+			m.commentsErr = msg.err
+		}
+		if msg.err == nil {
+			m.comments[msg.issueID] = msg.comments
 		}
 	}
 	return m, nil
@@ -114,13 +162,42 @@ func (m model) View() string {
 	listWidth := max(28, m.width/3)
 	detailWidth := max(40, m.width-listWidth-4)
 	left := m.issueList(listWidth, bodyHeight)
-	right := m.issueDetail(detailWidth, bodyHeight)
+	right := m.issuePane(detailWidth, bodyHeight)
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + footer()
 }
 
 func (m model) loadIssues() tea.Msg {
 	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.opts.Query, Top: m.opts.Top})
 	return issuesMsg{issues: issues, err: err}
+}
+
+func (m model) withSelectedCommentsLoading() (tea.Model, tea.Cmd) {
+	issueID := m.currentIssueID()
+	if issueID == "" {
+		return m, nil
+	}
+	if _, ok := m.comments[issueID]; ok {
+		m.commentsLoading = false
+		m.commentsErr = nil
+		return m, nil
+	}
+	m.commentsLoading = true
+	m.commentsErr = nil
+	return m, m.loadComments(issueID)
+}
+
+func (m model) loadComments(issueID string) tea.Cmd {
+	return func() tea.Msg {
+		comments, err := m.client.Comments(m.ctx, issueID)
+		return commentsMsg{issueID: issueID, comments: comments, err: err}
+	}
+}
+
+func (m model) currentIssueID() string {
+	if len(m.issues) == 0 || m.selected < 0 || m.selected >= len(m.issues) {
+		return ""
+	}
+	return m.issues[m.selected].IDReadable
 }
 
 func (m model) issueList(width, height int) string {
@@ -138,10 +215,17 @@ func (m model) issueList(width, height int) string {
 	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
 }
 
-func (m model) issueDetail(width, height int) string {
+func (m model) issuePane(width, height int) string {
 	if len(m.issues) == 0 {
 		return panelStyle.Width(width).Height(height).Render("No issues")
 	}
+	if m.pane == commentsPane {
+		return m.issueComments(width, height)
+	}
+	return m.issueDetail(width, height)
+}
+
+func (m model) issueDetail(width, height int) string {
 	issue := m.issues[m.selected]
 	lines := []string{
 		titleStyle.Render(issue.IDReadable),
@@ -160,8 +244,29 @@ func (m model) issueDetail(width, height int) string {
 	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
 }
 
+func (m model) issueComments(width, height int) string {
+	issueID := m.currentIssueID()
+	if m.commentsLoading {
+		return panelStyle.Width(width).Height(height).Render("Loading comments...")
+	}
+	if m.commentsErr != nil {
+		return panelStyle.Width(width).Height(height).Render("Error: " + m.commentsErr.Error())
+	}
+	comments := m.comments[issueID]
+	if len(comments) == 0 {
+		return panelStyle.Width(width).Height(height).Render(titleStyle.Render(issueID) + "\n\nNo comments")
+	}
+
+	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Comments"), ""}
+	for _, comment := range comments {
+		author := firstNonEmpty(comment.Author.FullName, comment.Author.Name, comment.Author.Login)
+		lines = append(lines, author+": "+strings.TrimSpace(comment.Text), "")
+	}
+	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+}
+
 func footer() string {
-	return helpStyle.Render("j/k move  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  tab details/comments  g/G top/bottom  r refresh  q quit")
 }
 
 func truncate(value string, width int) string {
