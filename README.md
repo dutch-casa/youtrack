@@ -4,16 +4,40 @@ Native Go CLI for JetBrains YouTrack. The default mode is non-interactive and JS
 
 ## Install
 
+Paste this into a terminal on a machine where Go is installed:
+
 ```sh
-go install ./cmd/yt
+tmp=$(mktemp -d) && git clone https://github.com/dutch-casa/youtrack "$tmp/youtrack" && "$tmp/youtrack/scripts/install.sh"
+```
+
+That installs `yt` to `~/.local/bin`.
+
+If you already have the checkout:
+
+```sh
+scripts/install.sh
+```
+
+By default this installs `yt` to `~/.local/bin`. To choose another location:
+
+```sh
+scripts/install.sh --bin-dir /usr/local/bin
+scripts/install.sh --prefix "$HOME/.local"
+scripts/install.sh --dry-run
 ```
 
 ## Authenticate
 
-Create a YouTrack permanent token, then run:
+Authentication uses a YouTrack permanent token, not an OAuth browser grant. Create a token in YouTrack from Profile -> Account Security -> Tokens -> New token, then run:
 
 ```sh
 yt auth login --url https://example.youtrack.cloud --token perm:...
+```
+
+For a guided terminal prompt, run:
+
+```sh
+yt auth login
 ```
 
 You can also avoid local config with environment variables:
