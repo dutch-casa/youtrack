@@ -79,6 +79,9 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.meCommand())
 	cmd.AddCommand(a.projectsCommand())
 	cmd.AddCommand(a.usersCommand())
+	cmd.AddCommand(a.articlesCommand())
+	cmd.AddCommand(a.agilesCommand())
+	cmd.AddCommand(a.helpdeskCommand())
 	cmd.AddCommand(a.issuesCommand())
 	cmd.AddCommand(a.commentsCommand())
 	cmd.AddCommand(a.workItemsCommand())
@@ -190,6 +193,178 @@ func (a *app) authCommand() *cobra.Command {
 
 	cmd := &cobra.Command{Use: "auth", Short: "Manage authentication"}
 	cmd.AddCommand(login, logout, status)
+	return cmd
+}
+
+func (a *app) articlesCommand() *cobra.Command {
+	var project string
+	var top int
+	var skip int
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List knowledge base articles",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
+			client, err := a.client(cmd.Context())
+			if err != nil {
+				return err
+			}
+			articles, err := client.Articles(cmd.Context(), youtrack.ArticleListOptions{Project: project, Top: top, Skip: skip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, articles)
+		},
+	}
+	list.Flags().StringVarP(&project, "project", "p", "", "project short name or id")
+	list.Flags().IntVar(&top, "top", 42, "maximum articles to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of articles to skip")
+
+	show := &cobra.Command{
+		Use:   "show ARTICLE",
+		Short: "Show one knowledge base article",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.client(cmd.Context())
+			if err != nil {
+				return err
+			}
+			article, err := client.Article(cmd.Context(), args[0])
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, article)
+		},
+	}
+
+	cmd := &cobra.Command{
+		Use:     "articles",
+		Aliases: []string{"article", "kb", "knowledge-base"},
+		Short:   "Work with knowledge base articles",
+	}
+	cmd.AddCommand(list, show)
+	return cmd
+}
+
+func (a *app) agilesCommand() *cobra.Command {
+	var top int
+	var skip int
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List agile boards",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
+			client, err := a.client(cmd.Context())
+			if err != nil {
+				return err
+			}
+			agiles, err := client.Agiles(cmd.Context(), youtrack.PageOptions{Top: top, Skip: skip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, agiles)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum agile boards to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of agile boards to skip")
+
+	var sprintTop int
+	var sprintSkip int
+	sprints := &cobra.Command{
+		Use:   "sprints AGILE",
+		Short: "List sprints for an agile board",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(sprintTop, sprintSkip); err != nil {
+				return err
+			}
+			client, err := a.client(cmd.Context())
+			if err != nil {
+				return err
+			}
+			sprints, err := client.Sprints(cmd.Context(), youtrack.SprintListOptions{AgileID: args[0], Top: sprintTop, Skip: sprintSkip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, sprints)
+		},
+	}
+	sprints.Flags().IntVar(&sprintTop, "top", 42, "maximum sprints to return")
+	sprints.Flags().IntVar(&sprintSkip, "skip", 0, "number of sprints to skip")
+
+	cmd := &cobra.Command{
+		Use:     "agiles",
+		Aliases: []string{"agile", "boards", "board"},
+		Short:   "Work with agile boards",
+	}
+	cmd.AddCommand(list, sprints)
+	return cmd
+}
+
+func (a *app) helpdeskCommand() *cobra.Command {
+	var top int
+	var skip int
+
+	projects := &cobra.Command{
+		Use:   "projects",
+		Short: "List helpdesk projects",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(top, skip); err != nil {
+				return err
+			}
+			client, err := a.client(cmd.Context())
+			if err != nil {
+				return err
+			}
+			projects, err := client.HelpdeskProjects(cmd.Context(), youtrack.PageOptions{Top: top, Skip: skip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, projects)
+		},
+	}
+	projects.Flags().IntVar(&top, "top", 42, "maximum projects to return")
+	projects.Flags().IntVar(&skip, "skip", 0, "number of projects to skip")
+
+	var query string
+	var ticketTop int
+	var ticketSkip int
+	tickets := &cobra.Command{
+		Use:   "tickets PROJECT",
+		Short: "List helpdesk tickets in a project",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if err := validatePageFlags(ticketTop, ticketSkip); err != nil {
+				return err
+			}
+			client, err := a.client(cmd.Context())
+			if err != nil {
+				return err
+			}
+			issueQuery := strings.TrimSpace("project: " + args[0] + " " + query)
+			issues, err := client.Issues(cmd.Context(), youtrack.IssueListOptions{Query: issueQuery, Top: ticketTop, Skip: ticketSkip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, issues)
+		},
+	}
+	tickets.Flags().StringVarP(&query, "query", "q", "", "additional YouTrack ticket query")
+	tickets.Flags().IntVar(&ticketTop, "top", 25, "maximum tickets to return")
+	tickets.Flags().IntVar(&ticketSkip, "skip", 0, "number of tickets to skip")
+
+	cmd := &cobra.Command{
+		Use:     "helpdesk",
+		Aliases: []string{"help-desk", "tickets"},
+		Short:   "Work with helpdesk projects and tickets",
+	}
+	cmd.AddCommand(projects, tickets)
 	return cmd
 }
 

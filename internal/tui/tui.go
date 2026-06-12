@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"strings"
 
@@ -19,6 +20,11 @@ type Options struct {
 
 type Client interface {
 	Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error)
+	Projects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error)
+	Users(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.User, error)
+	Articles(ctx context.Context, opts youtrack.ArticleListOptions) ([]youtrack.Article, error)
+	Agiles(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Agile, error)
+	HelpdeskProjects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error)
 	Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error)
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
@@ -48,13 +54,42 @@ const (
 	modeComment
 	modeWorkItem
 	modeQuery
+	modeProject
+	modeIssue
 )
 
 func Run(ctx context.Context, client Client, opts Options, out io.Writer) error {
 	model := newModel(ctx, client, opts)
-	program := tea.NewProgram(model, tea.WithOutput(out), tea.WithAltScreen())
+	program := tea.NewProgram(model, tea.WithOutput(out), tea.WithAltScreen(), tea.WithMouseCellMotion())
 	_, err := program.Run()
 	return err
+}
+
+type section int
+
+const (
+	sectionIssues section = iota
+	sectionKnowledge
+	sectionHelpdesk
+	sectionAgile
+	sectionProjects
+	sectionUsers
+)
+
+var sections = []section{
+	sectionIssues,
+	sectionKnowledge,
+	sectionHelpdesk,
+	sectionAgile,
+	sectionProjects,
+	sectionUsers,
+}
+
+type resourceItem struct {
+	ID       string
+	Title    string
+	Subtitle string
+	Body     string
 }
 
 type model struct {
@@ -67,9 +102,18 @@ type model struct {
 	height   int
 	loading  bool
 	err      error
+	section  section
 	pane     pane
 	status   string
 	detail   viewport.Model
+
+	resources         []resourceItem
+	allResources      []resourceItem
+	resourceSelected  int
+	resourcesLoading  bool
+	resourcesErr      error
+	resourceFilter    string
+	resourceListStart int
 
 	inputMode      inputMode
 	commandInput   textinput.Model
@@ -84,7 +128,10 @@ type model struct {
 	workItemRunning bool
 	workItemErr     error
 
-	queryInput textinput.Model
+	queryInput    textinput.Model
+	projectInput  textinput.Model
+	issueInput    textinput.Model
+	projectFilter string
 
 	comments        map[string][]youtrack.Comment
 	commentsLoading bool
@@ -110,6 +157,12 @@ type model struct {
 type issuesMsg struct {
 	issues []youtrack.Issue
 	err    error
+}
+
+type resourcesMsg struct {
+	section   section
+	resources []resourceItem
+	err       error
 }
 
 type commentsMsg struct {
@@ -168,17 +221,22 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	commentInput := newPrompt("comment> ", "Add a quick comment", 2048)
 	workItemInput := newPrompt("work> ", "45m implementation", 512)
 	queryInput := newPrompt("/ ", "project: ABC #Unresolved", 512)
+	projectInput := newPrompt("project> ", "ABC", 128)
+	issueInput := newPrompt("issue> ", "ABC-123", 128)
 	detail := viewport.New(0, 0)
 	return model{
 		ctx:           ctx,
 		client:        client,
 		opts:          opts,
 		loading:       true,
+		section:       sectionIssues,
 		detail:        detail,
 		commandInput:  commandInput,
 		commentInput:  commentInput,
 		workItemInput: workItemInput,
 		queryInput:    queryInput,
+		projectInput:  projectInput,
+		issueInput:    issueInput,
 		comments:      make(map[string][]youtrack.Comment),
 		attachments:   make(map[string][]youtrack.Attachment),
 		activities:    make(map[string][]youtrack.Activity),
@@ -196,6 +254,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+	case tea.MouseMsg:
+		return m.updateMouse(msg)
 	case tea.KeyMsg:
 		switch m.inputMode {
 		case modeCommand:
@@ -206,6 +266,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateWorkItemInput(msg)
 		case modeQuery:
 			return m.updateQueryInput(msg)
+		case modeProject:
+			return m.updateProjectInput(msg)
+		case modeIssue:
+			return m.updateIssueInput(msg)
 		}
 		if updated, ok := m.scrollDetail(msg); ok {
 			return updated, nil
@@ -213,56 +277,72 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		case "1":
+			return m.switchSection(sectionIssues)
+		case "2":
+			return m.switchSection(sectionKnowledge)
+		case "3":
+			return m.switchSection(sectionHelpdesk)
+		case "4":
+			return m.switchSection(sectionAgile)
+		case "5":
+			return m.switchSection(sectionProjects)
+		case "6":
+			return m.switchSection(sectionUsers)
 		case ":":
-			if m.currentIssueID() != "" && !m.commandRunning {
+			if m.section == sectionIssues && m.currentIssueID() != "" && !m.commandRunning {
 				return m, m.openCommandPrompt()
 			}
 		case "c":
-			if m.currentIssueID() != "" && !m.commentRunning {
+			if m.section == sectionIssues && m.currentIssueID() != "" && !m.commentRunning {
 				return m, m.openCommentPrompt()
 			}
 		case "w":
-			if m.currentIssueID() != "" && !m.workItemRunning {
+			if m.section == sectionIssues && m.currentIssueID() != "" && !m.workItemRunning {
 				return m, m.openWorkItemPrompt()
 			}
 		case "/":
-			if !m.loading {
+			if m.section == sectionIssues && !m.loading {
 				return m, m.openQueryPrompt()
 			}
+			if m.section != sectionIssues && !m.resourcesLoading {
+				return m, m.openQueryPrompt()
+			}
+		case "P":
+			if m.section == sectionIssues && !m.loading {
+				return m, m.openProjectPrompt()
+			}
+		case "o":
+			if m.section == sectionIssues && !m.loading {
+				return m, m.openIssuePrompt()
+			}
 		case "tab":
+			if m.section != sectionIssues {
+				return m, nil
+			}
 			m.pane = m.pane.next()
 			m.detail.GotoTop()
 			return m.withSelectedPaneLoading()
 		case "j", "down":
-			if m.selected < len(m.issues)-1 {
-				m.selected++
-				m.detail.GotoTop()
-				return m.withSelectedPaneLoading()
-			}
+			return m.moveSelection(1)
 		case "k", "up":
-			if m.selected > 0 {
-				m.selected--
-				m.detail.GotoTop()
-				return m.withSelectedPaneLoading()
-			}
+			return m.moveSelection(-1)
 		case "g", "home":
-			m.selected = 0
+			m.selectFirst()
 			m.detail.GotoTop()
-			return m.withSelectedPaneLoading()
+			return m.withCurrentSelectionLoading()
 		case "G", "end":
-			if len(m.issues) > 0 {
-				m.selected = len(m.issues) - 1
-				m.detail.GotoTop()
-				return m.withSelectedPaneLoading()
-			}
+			m.selectLast()
+			m.detail.GotoTop()
+			return m.withCurrentSelectionLoading()
 		case "n":
-			if !m.loading && m.canLoadNextIssuePage() {
+			if m.section == sectionIssues && !m.loading && m.canLoadNextIssuePage() {
 				m.opts.Skip += m.opts.Top
 				m.selected = 0
 				return m.withIssueListLoading("Loading next page...")
 			}
 		case "p":
-			if !m.loading && m.opts.Skip > 0 {
+			if m.section == sectionIssues && !m.loading && m.opts.Skip > 0 {
 				m.opts.Skip = max(0, m.opts.Skip-m.opts.Top)
 				m.selected = 0
 				return m.withIssueListLoading("Loading previous page...")
@@ -273,7 +353,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commentRunning = false
 			m.workItemRunning = false
 			m.clearPrompts()
-			return m.withIssueListLoading("")
+			return m.withSectionLoading("")
 		}
 	case issuesMsg:
 		m.loading = false
@@ -282,6 +362,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.selected >= len(m.issues) {
 			m.selected = max(0, len(m.issues)-1)
 		}
+	case resourcesMsg:
+		if msg.section != m.section {
+			return m, nil
+		}
+		m.resourcesLoading = false
+		m.resourcesErr = msg.err
+		m.allResources = msg.resources
+		m.resources = filterResources(msg.resources, m.resourceFilter)
+		if m.resourceSelected >= len(m.resources) {
+			m.resourceSelected = max(0, len(m.resources)-1)
+		}
+		m.detail.GotoTop()
 	case commentsMsg:
 		if m.currentIssueID() == msg.issueID {
 			m.commentsLoading = false
@@ -505,6 +597,18 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "enter":
 		query := strings.TrimSpace(m.queryInput.Value())
 		m.closeQueryPrompt()
+		if m.section != sectionIssues {
+			m.resourceFilter = query
+			m.resources = filterResources(m.allResources, query)
+			m.resourceSelected = 0
+			m.detail.GotoTop()
+			if query == "" {
+				m.status = ""
+			} else {
+				m.status = fmt.Sprintf("Filtered %s to %d result(s)", m.section.title(), len(m.resources))
+			}
+			return m, nil
+		}
 		m.opts.Query = query
 		m.opts.Skip = 0
 		m.selected = 0
@@ -516,14 +620,246 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m model) updateProjectInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.closeProjectPrompt()
+		return m, nil
+	case "enter":
+		project := strings.TrimSpace(m.projectInput.Value())
+		m.closeProjectPrompt()
+		m.projectFilter = project
+		m.opts.Skip = 0
+		m.selected = 0
+		m.clearActionErrors()
+		if project == "" {
+			return m.withIssueListLoading("Loading issues...")
+		}
+		return m.withIssueListLoading("Loading project " + project + "...")
+	}
+	var cmd tea.Cmd
+	m.projectInput, cmd = m.projectInput.Update(msg)
+	return m, cmd
+}
+
+func (m model) updateIssueInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.closeIssuePrompt()
+		return m, nil
+	case "enter":
+		issueID := strings.TrimSpace(m.issueInput.Value())
+		m.closeIssuePrompt()
+		if issueID == "" {
+			return m, nil
+		}
+		m.projectFilter = ""
+		m.opts.Query = issueID
+		m.opts.Skip = 0
+		m.selected = 0
+		m.clearActionErrors()
+		return m.withIssueListLoading("Opening " + issueID + "...")
+	}
+	var cmd tea.Cmd
+	m.issueInput, cmd = m.issueInput.Update(msg)
+	return m, cmd
+}
+
 func (m model) loadIssues() tea.Msg {
-	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.opts.Query, Top: m.opts.Top, Skip: m.opts.Skip})
+	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.issueSearchQuery(), Top: m.opts.Top, Skip: m.opts.Skip})
 	return issuesMsg{issues: issues, err: err}
+}
+
+func (m model) issueSearchQuery() string {
+	query := strings.TrimSpace(m.opts.Query)
+	project := strings.TrimSpace(m.projectFilter)
+	if project == "" {
+		return query
+	}
+	if query == "" {
+		return "project: " + project
+	}
+	return "project: " + project + " " + query
+}
+
+func (m model) loadResources(s section) tea.Cmd {
+	return func() tea.Msg {
+		resources, err := m.resourcesForSection(s)
+		return resourcesMsg{section: s, resources: resources, err: err}
+	}
+}
+
+func (m model) resourcesForSection(s section) ([]resourceItem, error) {
+	switch s {
+	case sectionKnowledge:
+		articles, err := m.client.Articles(m.ctx, youtrack.ArticleListOptions{Top: m.opts.Top})
+		if err != nil {
+			return nil, err
+		}
+		return articleResources(articles), nil
+	case sectionHelpdesk:
+		projects, err := m.client.HelpdeskProjects(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		if err != nil {
+			return nil, err
+		}
+		return projectResources(projects), nil
+	case sectionAgile:
+		agiles, err := m.client.Agiles(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		if err != nil {
+			return nil, err
+		}
+		return agileResources(agiles), nil
+	case sectionProjects:
+		projects, err := m.client.Projects(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		if err != nil {
+			return nil, err
+		}
+		return projectResources(projects), nil
+	case sectionUsers:
+		users, err := m.client.Users(m.ctx, youtrack.PageOptions{Top: m.opts.Top})
+		if err != nil {
+			return nil, err
+		}
+		return userResources(users), nil
+	default:
+		return nil, nil
+	}
+}
+
+func (m model) switchSection(s section) (tea.Model, tea.Cmd) {
+	if m.section == s {
+		return m, nil
+	}
+	m.section = s
+	m.detail.GotoTop()
+	m.clearActionErrors()
+	m.clearPrompts()
+	if s == sectionIssues {
+		return m.withIssueListLoading("Loading issues...")
+	}
+	m.resources = nil
+	m.allResources = nil
+	m.resourceSelected = 0
+	m.resourcesLoading = true
+	m.resourcesErr = nil
+	m.resourceFilter = ""
+	m.status = "Loading " + s.title() + "..."
+	return m, m.loadResources(s)
+}
+
+func (m model) withSectionLoading(status string) (tea.Model, tea.Cmd) {
+	if m.section == sectionIssues {
+		return m.withIssueListLoading(status)
+	}
+	m.resourcesLoading = true
+	m.resourcesErr = nil
+	m.resourceSelected = 0
+	m.detail.GotoTop()
+	m.status = status
+	return m, m.loadResources(m.section)
+}
+
+func (m model) moveSelection(delta int) (tea.Model, tea.Cmd) {
+	if m.section == sectionIssues {
+		if len(m.issues) == 0 {
+			return m, nil
+		}
+		next := min(max(m.selected+delta, 0), len(m.issues)-1)
+		if next == m.selected {
+			return m, nil
+		}
+		m.selected = next
+		m.detail.GotoTop()
+		return m.withSelectedPaneLoading()
+	}
+	if len(m.resources) == 0 {
+		return m, nil
+	}
+	m.resourceSelected = min(max(m.resourceSelected+delta, 0), len(m.resources)-1)
+	m.detail.GotoTop()
+	return m, nil
+}
+
+func (m *model) selectFirst() {
+	if m.section == sectionIssues {
+		m.selected = 0
+		return
+	}
+	m.resourceSelected = 0
+}
+
+func (m *model) selectLast() {
+	if m.section == sectionIssues {
+		if len(m.issues) > 0 {
+			m.selected = len(m.issues) - 1
+		}
+		return
+	}
+	if len(m.resources) > 0 {
+		m.resourceSelected = len(m.resources) - 1
+	}
+}
+
+func (m model) withCurrentSelectionLoading() (tea.Model, tea.Cmd) {
+	if m.section == sectionIssues {
+		return m.withSelectedPaneLoading()
+	}
+	return m, nil
+}
+
+func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
+	event := tea.MouseEvent(msg)
+	if event.Action != tea.MouseActionPress {
+		return m, nil
+	}
+	if event.Button == tea.MouseButtonWheelDown {
+		return m.moveSelection(1)
+	}
+	if event.Button == tea.MouseButtonWheelUp {
+		return m.moveSelection(-1)
+	}
+	if event.Button != tea.MouseButtonLeft {
+		return m, nil
+	}
+	if event.Y == 0 {
+		if clicked, ok := sectionAtX(event.X); ok {
+			return m.switchSection(clicked)
+		}
+	}
+	if event.Y < 2 || event.Y >= max(3, m.height-3)+1 {
+		return m, nil
+	}
+	listWidth := max(28, m.width/3)
+	if event.X >= listWidth {
+		return m, nil
+	}
+	row := event.Y - 3
+	if row < 0 {
+		return m, nil
+	}
+	if m.section == sectionIssues {
+		start, end := visibleIssueRange(m.selected, len(m.issues), max(3, m.height-4))
+		index := start + row
+		if index >= start && index < end {
+			m.selected = index
+			m.detail.GotoTop()
+			return m.withSelectedPaneLoading()
+		}
+		return m, nil
+	}
+	start, end := visibleResourceRange(m.resourceSelected, len(m.resources), max(3, m.height-4))
+	index := start + row
+	if index >= start && index < end {
+		m.resourceSelected = index
+		m.detail.GotoTop()
+	}
+	return m, nil
 }
 
 func (m model) withIssueListLoading(status string) (tea.Model, tea.Cmd) {
 	m.loading = true
 	m.err = nil
+	m.section = sectionIssues
 	m.detail.GotoTop()
 	m.clearPaneCaches()
 	m.status = status

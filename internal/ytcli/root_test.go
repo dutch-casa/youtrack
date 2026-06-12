@@ -24,7 +24,7 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "Agent-friendly YouTrack CLI") {
 		t.Fatalf("help output = %q", out.String())
 	}
-	for _, command := range []string{"projects", "users", "commands", "attachments", "activities", "links", "upgrade"} {
+	for _, command := range []string{"projects", "users", "articles", "agiles", "helpdesk", "commands", "attachments", "activities", "links", "upgrade"} {
 		if !strings.Contains(out.String(), command) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}

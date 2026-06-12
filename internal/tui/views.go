@@ -16,18 +16,54 @@ func (m model) View() string {
 	}
 
 	bodyHeight := max(3, m.height-3)
-	if m.loading {
-		return panelStyle.Width(m.width).Height(bodyHeight).Render("Loading issues...") + "\n" + m.footer()
+	header := m.sectionBar() + "\n"
+	if m.section == sectionIssues && m.loading {
+		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading issues...") + "\n" + m.footer()
 	}
-	if m.err != nil {
-		return panelStyle.Width(m.width).Height(bodyHeight).Render("Error: "+m.err.Error()) + "\n" + m.footer()
+	if m.section == sectionIssues && m.err != nil {
+		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Error: "+m.err.Error()) + "\n" + m.footer()
+	}
+	if m.section != sectionIssues && m.resourcesLoading {
+		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading "+m.section.title()+"...") + "\n" + m.footer()
+	}
+	if m.section != sectionIssues && m.resourcesErr != nil {
+		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Error: "+m.resourcesErr.Error()) + "\n" + m.footer()
 	}
 
 	listWidth := max(28, m.width/3)
 	detailWidth := max(40, m.width-listWidth-4)
-	left := m.issueList(listWidth, bodyHeight)
-	right := m.issuePane(detailWidth, bodyHeight)
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + m.footer()
+	contentHeight := max(3, bodyHeight-1)
+	left := m.leftList(listWidth, contentHeight)
+	right := m.rightPane(detailWidth, contentHeight)
+	return header + lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + m.footer()
+}
+
+func (m model) sectionBar() string {
+	labels := make([]string, 0, len(sections))
+	for _, s := range sections {
+		label := fmt.Sprintf(" %s %s ", s.key(), s.title())
+		if s == m.section {
+			label = sectionSelectedStyle.Render(label)
+		} else {
+			label = sectionStyle.Render(label)
+		}
+		labels = append(labels, label)
+	}
+	return strings.Join(labels, " ")
+}
+
+func (m model) leftList(width, height int) string {
+	if m.section == sectionIssues {
+		return m.issueList(width, height)
+	}
+	return m.resourceList(width, height)
+}
+
+func (m model) rightPane(width, height int) string {
+	if m.section == sectionIssues {
+		return m.issuePane(width, height)
+	}
+	return m.resourcePane(width, height)
 }
 
 func (m model) issueList(width, height int) string {
@@ -38,8 +74,11 @@ func (m model) issueList(width, height int) string {
 		position = min(max(m.selected, 0), len(m.issues)-1) + 1
 	}
 	titleText := fmt.Sprintf("Issues %d/%d", position, len(m.issues))
+	if m.projectFilter != "" {
+		titleText = fmt.Sprintf("Issues %s %d/%d", m.projectFilter, position, len(m.issues))
+	}
 	if page := m.issuePageNumber(); page > 1 {
-		titleText = fmt.Sprintf("Issues %d/%d page %d", position, len(m.issues), page)
+		titleText = fmt.Sprintf("%s page %d", titleText, page)
 	}
 	title := titleStyle.Render(titleText)
 	rows = append(rows, title)
@@ -53,6 +92,36 @@ func (m model) issueList(width, height int) string {
 		rows = append(rows, line)
 	}
 	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
+}
+
+func (m model) resourceList(width, height int) string {
+	start, end := visibleResourceRange(m.resourceSelected, len(m.resources), height)
+	rows := make([]string, 0, end-start+1)
+	position := 0
+	if len(m.resources) > 0 {
+		position = min(max(m.resourceSelected, 0), len(m.resources)-1) + 1
+	}
+	rows = append(rows, titleStyle.Render(fmt.Sprintf("%s %d/%d", m.section.title(), position, len(m.resources))))
+	for i, resource := range m.resources[start:end] {
+		index := start + i
+		line := truncate(resourceLine(resource), width-4)
+		if index == m.resourceSelected {
+			line = selectedStyle.Render(line)
+		}
+		rows = append(rows, line)
+	}
+	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
+}
+
+func visibleResourceRange(selected, total, height int) (int, int) {
+	return visibleIssueRange(selected, total, height)
+}
+
+func resourceLine(resource resourceItem) string {
+	if resource.Subtitle == "" {
+		return firstNonEmpty(resource.ID, resource.Title)
+	}
+	return strings.TrimSpace(firstNonEmpty(resource.ID, resource.Title) + "  " + resource.Subtitle)
 }
 
 func (m model) issuePageNumber() int {
@@ -84,6 +153,18 @@ func visibleIssueRange(selected, total, height int) (int, int) {
 
 func (m model) issuePane(width, height int) string {
 	content := m.issuePaneContent()
+	return m.renderDetailViewport(content, width, height)
+}
+
+func (m model) resourcePane(width, height int) string {
+	if len(m.resources) == 0 {
+		return m.renderDetailViewport("No "+strings.ToLower(m.section.title()), width, height)
+	}
+	selected := min(max(m.resourceSelected, 0), len(m.resources)-1)
+	content := m.resources[selected].Body
+	if strings.TrimSpace(content) == "" {
+		content = titleStyle.Render(m.resources[selected].Title)
+	}
 	return m.renderDetailViewport(content, width, height)
 }
 
@@ -122,7 +203,16 @@ func (m *model) syncDetailViewport() {
 	bodyHeight := max(3, m.height-3)
 	m.detail.Width = max(1, detailWidth-4)
 	m.detail.Height = max(1, bodyHeight-2)
-	m.detail.SetContent(m.issuePaneContent())
+	if m.section == sectionIssues {
+		m.detail.SetContent(m.issuePaneContent())
+		return
+	}
+	if len(m.resources) == 0 {
+		m.detail.SetContent("")
+		return
+	}
+	selected := min(max(m.resourceSelected, 0), len(m.resources)-1)
+	m.detail.SetContent(m.resources[selected].Body)
 }
 
 func (m model) issueDetail() string {
@@ -276,6 +366,12 @@ func (m model) footer() string {
 	if m.inputMode == modeQuery {
 		return commandStyle.Render(m.queryInput.View())
 	}
+	if m.inputMode == modeProject {
+		return commandStyle.Render(m.projectInput.View())
+	}
+	if m.inputMode == modeIssue {
+		return commandStyle.Render(m.issueInput.View())
+	}
 	if m.commandErr != nil {
 		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  esc cancel  q quit")
 	}
@@ -286,7 +382,14 @@ func (m model) footer() string {
 		return errorStyle.Render("work item failed: "+m.workItemErr.Error()) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  esc cancel  q quit")
 	}
 	if m.status != "" {
-		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  tab panes  r refresh  q quit")
+		return statusStyle.Render(m.status) + "  " + helpStyle.Render(m.helpText())
 	}
-	return helpStyle.Render("j/k move  / query  c comment  w work  n/p page  tab details/comments/links/activity/work/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render(m.helpText())
+}
+
+func (m model) helpText() string {
+	if m.section != sectionIssues {
+		return "1-6 sections  / fuzzy  click select  wheel move  j/k move  pgup/pgdn scroll  r refresh  q quit"
+	}
+	return "1-6 sections  click select  wheel move  / query  P project  o issue  c comment  w work  n/p page  tab panes  pgup/pgdn scroll  : command  r refresh  q quit"
 }

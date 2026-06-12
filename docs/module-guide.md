@@ -35,6 +35,7 @@ See also:
 - [0031 Custom Field Projection Boundary](adr/0031-custom-field-projection-boundary.md)
 - [0032 Browser-Assisted Token Auth](adr/0032-browser-assisted-token-auth.md)
 - [0033 Top-Level Upgrade Command](adr/0033-top-level-upgrade-command.md)
+- [0034 Product Surface Resource Substrate](adr/0034-product-surface-resource-substrate.md)
 
 ## `internal/auth`
 
@@ -46,7 +47,7 @@ Role: Callers ask for usable credentials. The module decides whether to use envi
 
 Secret: This module hides the YouTrack REST API wire shape.
 
-Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
+Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, knowledge-base, agile-board, helpdesk-project, project, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
 
 ## `internal/ytcli`
 
@@ -62,6 +63,6 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 ## `internal/tui`
 
-Secret: This module hides the terminal interaction state for browsing issues.
+Secret: This module hides the terminal interaction state for browsing YouTrack.
 
-Role: It owns keyboard bindings, layout, selection state, lazy-loaded issue panes, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.
+Role: It owns keyboard and mouse bindings, layout, section state, selection state, lazy-loaded issue panes, shared resource browsing, fzf-style local filtering, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, resource projection owns how typed YouTrack entities become list/detail rows, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.

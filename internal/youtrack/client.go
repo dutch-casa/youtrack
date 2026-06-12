@@ -42,11 +42,64 @@ type User struct {
 }
 
 type Project struct {
-	ID        string `json:"id,omitempty"`
-	ShortName string `json:"shortName"`
-	Name      string `json:"name,omitempty"`
+	ID          string      `json:"id,omitempty"`
+	ShortName   string      `json:"shortName"`
+	Name        string      `json:"name,omitempty"`
+	Description string      `json:"description,omitempty"`
+	Archived    bool        `json:"archived,omitempty"`
+	Leader      User        `json:"leader,omitempty"`
+	ProjectType ProjectType `json:"projectType,omitempty"`
+}
+
+type ProjectType struct {
+	Name string `json:"name,omitempty"`
+}
+
+func (p *ProjectType) UnmarshalJSON(data []byte) error {
+	var name string
+	if err := json.Unmarshal(data, &name); err == nil {
+		p.Name = name
+		return nil
+	}
+	var object struct {
+		Name string `json:"name"`
+		ID   string `json:"id"`
+	}
+	if err := json.Unmarshal(data, &object); err != nil {
+		return err
+	}
+	p.Name = firstNonEmpty(object.Name, object.ID)
+	return nil
+}
+
+type Agile struct {
+	ID            string    `json:"id"`
+	Name          string    `json:"name"`
+	Owner         User      `json:"owner,omitempty"`
+	Projects      []Project `json:"projects,omitempty"`
+	CurrentSprint Sprint    `json:"currentSprint,omitempty"`
+}
+
+type Sprint struct {
+	ID        string `json:"id"`
+	Name      string `json:"name"`
 	Archived  bool   `json:"archived,omitempty"`
-	Leader    User   `json:"leader,omitempty"`
+	Start     int64  `json:"start,omitempty"`
+	Finish    int64  `json:"finish,omitempty"`
+	IsDefault bool   `json:"isDefault,omitempty"`
+}
+
+type Article struct {
+	ID          string  `json:"id"`
+	IDReadable  string  `json:"idReadable,omitempty"`
+	Summary     string  `json:"summary,omitempty"`
+	Content     string  `json:"content,omitempty"`
+	Created     int64   `json:"created,omitempty"`
+	Updated     int64   `json:"updated,omitempty"`
+	HasChildren bool    `json:"hasChildren,omitempty"`
+	HasStar     bool    `json:"hasStar,omitempty"`
+	Project     Project `json:"project,omitempty"`
+	Reporter    User    `json:"reporter,omitempty"`
 }
 
 type Issue struct {
@@ -169,6 +222,18 @@ type PageOptions struct {
 	Skip int
 }
 
+type ArticleListOptions struct {
+	Project string
+	Top     int
+	Skip    int
+}
+
+type SprintListOptions struct {
+	AgileID string
+	Top     int
+	Skip    int
+}
+
 type ApplyCommandRequest struct {
 	IssueID string
 	Query   string
@@ -269,6 +334,74 @@ func (c *Client) Projects(ctx context.Context, opts PageOptions) ([]Project, err
 	var projects []Project
 	err := c.get(ctx, "/api/admin/projects", values, &projects)
 	return projects, err
+}
+
+func (c *Client) HelpdeskProjects(ctx context.Context, opts PageOptions) ([]Project, error) {
+	projects, err := c.Projects(ctx, opts)
+	if err != nil {
+		return nil, err
+	}
+	helpdesk := projects[:0]
+	for _, project := range projects {
+		if strings.EqualFold(project.ProjectType.Name, "helpdesk") {
+			helpdesk = append(helpdesk, project)
+		}
+	}
+	return helpdesk, nil
+}
+
+func (c *Client) Agiles(ctx context.Context, opts PageOptions) ([]Agile, error) {
+	if err := validatePageOptions(opts); err != nil {
+		return nil, err
+	}
+	values := pageValues(opts)
+	values.Set("fields", agileFields)
+
+	var agiles []Agile
+	err := c.get(ctx, "/api/agiles", values, &agiles)
+	return agiles, err
+}
+
+func (c *Client) Sprints(ctx context.Context, opts SprintListOptions) ([]Sprint, error) {
+	if strings.TrimSpace(opts.AgileID) == "" {
+		return nil, errors.New("agile id is required")
+	}
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
+	}
+	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
+	values.Set("fields", sprintFields)
+
+	var sprints []Sprint
+	err := c.get(ctx, "/api/agiles/"+url.PathEscape(opts.AgileID)+"/sprints", values, &sprints)
+	return sprints, err
+}
+
+func (c *Client) Articles(ctx context.Context, opts ArticleListOptions) ([]Article, error) {
+	if err := validatePageOptions(PageOptions{Top: opts.Top, Skip: opts.Skip}); err != nil {
+		return nil, err
+	}
+	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
+	values.Set("fields", articleFields)
+
+	path := "/api/articles"
+	if strings.TrimSpace(opts.Project) != "" {
+		path = "/api/admin/projects/" + url.PathEscape(opts.Project) + "/articles"
+	}
+	var articles []Article
+	err := c.get(ctx, path, values, &articles)
+	return articles, err
+}
+
+func (c *Client) Article(ctx context.Context, id string) (Article, error) {
+	if strings.TrimSpace(id) == "" {
+		return Article{}, errors.New("article id is required")
+	}
+	var article Article
+	err := c.get(ctx, "/api/articles/"+url.PathEscape(id), url.Values{
+		"fields": {articleFields},
+	}, &article)
+	return article, err
 }
 
 func (c *Client) Users(ctx context.Context, opts PageOptions) ([]User, error) {
@@ -776,8 +909,11 @@ func decodeAPIError(status int, data []byte) error {
 }
 
 const issueFields = "id,idReadable,summary,description,resolved,project(shortName,name),customFields(name,value(name,login,presentation,text,isResolved))"
-const projectFields = "id,shortName,name,archived,leader(id,login,name,fullName,email)"
+const projectFields = "id,shortName,name,description,archived,projectType(name),leader(id,login,name,fullName,email)"
 const userFields = "id,login,name,fullName,email,online,banned"
+const agileFields = "id,name,owner(id,login,name,fullName,email),projects(id,shortName,name,archived,projectType(name)),currentSprint(id,name,archived,start,finish,isDefault)"
+const sprintFields = "id,name,archived,start,finish,isDefault"
+const articleFields = "id,idReadable,summary,content,created,updated,hasChildren,hasStar,project(id,shortName,name),reporter(id,login,name,fullName,email)"
 const workItemFields = "id,text,date,duration(id,minutes,presentation),type(id,name),author(id,login,name,fullName,email),creator(id,login,name,fullName,email)"
 const attachmentFields = "id,name,author(id,login,name,fullName,email),created,updated,size,extension,mimeType,metaData,url,thumbnailURL"
 const activityFields = "id,$type,author(id,login,name,fullName,email),timestamp,target(id,text,name,summary,idReadable),targetMember,field(name),added(id,name,login,text,presentation),removed(id,name,login,text,presentation),category(id)"

@@ -65,6 +65,13 @@ If a command needs credentials and stdin is a terminal, `yt` prompts, verifies t
 yt me
 yt projects list
 yt users list
+yt articles list
+yt articles list --project ABC
+yt articles show ABC-A-1
+yt agiles list
+yt agiles sprints 120-1
+yt helpdesk projects
+yt helpdesk tickets SUPPORT --query '#Unresolved'
 yt issues list --query 'project: ABC #Unresolved' --top 20
 yt issues show ABC-123
 yt issues create --project ABC --summary 'Fix login redirect' --description 'Observed in staging'
@@ -103,4 +110,4 @@ For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell
 yt interactive --query 'project: ABC #Unresolved'
 ```
 
-Keys: `j/k` move, `/` changes the YouTrack issue query, `c` adds a quick comment, `w` adds a quick work item such as `45m implementation`, `n/p` moves between issue result pages, `tab` switches details/comments/links/activity/work/attachments, `pgup/pgdn` scrolls the selected pane, `:` applies a YouTrack command to the selected issue, `g/G` top/bottom, `r` refresh, `q` quit.
+Keys: `1-6` switch Issues, Knowledge Base, Help Desk, Agile Boards, Projects, and Users. Mouse clicks select sections and rows, and the wheel moves the current list. `j/k` move, `/` searches the current section, `P` filters issues by project, `o` jumps to a specific issue ID, `c` adds a quick comment on issues, `w` adds a quick work item such as `45m implementation`, `n/p` moves between issue result pages, `tab` switches issue details/comments/links/activity/work/attachments, `pgup/pgdn` scrolls the selected pane, `:` applies a YouTrack command to the selected issue, `g/G` top/bottom, `r` refresh, `q` quit.

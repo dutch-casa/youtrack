@@ -40,7 +40,30 @@ func (m *model) openWorkItemPrompt() tea.Cmd {
 func (m *model) openQueryPrompt() tea.Cmd {
 	m.inputMode = modeQuery
 	resetAndFocus(&m.queryInput)
-	m.queryInput.SetValue(m.opts.Query)
+	if m.section == sectionIssues {
+		m.queryInput.Placeholder = "project: ABC #Unresolved"
+		m.queryInput.SetValue(m.opts.Query)
+	} else {
+		m.queryInput.Placeholder = "fuzzy search " + m.section.title()
+		m.queryInput.SetValue(m.resourceFilter)
+	}
+	m.clearActionErrors()
+	m.status = ""
+	return textinput.Blink
+}
+
+func (m *model) openProjectPrompt() tea.Cmd {
+	m.inputMode = modeProject
+	resetAndFocus(&m.projectInput)
+	m.projectInput.SetValue(m.projectFilter)
+	m.clearActionErrors()
+	m.status = ""
+	return textinput.Blink
+}
+
+func (m *model) openIssuePrompt() tea.Cmd {
+	m.inputMode = modeIssue
+	resetAndFocus(&m.issueInput)
 	m.clearActionErrors()
 	m.status = ""
 	return textinput.Blink
@@ -66,12 +89,24 @@ func (m *model) closeQueryPrompt() {
 	clearInput(&m.queryInput)
 }
 
+func (m *model) closeProjectPrompt() {
+	m.inputMode = modeNavigation
+	clearInput(&m.projectInput)
+}
+
+func (m *model) closeIssuePrompt() {
+	m.inputMode = modeNavigation
+	clearInput(&m.issueInput)
+}
+
 func (m *model) clearPrompts() {
 	m.inputMode = modeNavigation
 	clearInput(&m.commandInput)
 	clearInput(&m.commentInput)
 	clearInput(&m.workItemInput)
 	clearInput(&m.queryInput)
+	clearInput(&m.projectInput)
+	clearInput(&m.issueInput)
 }
 
 func (m *model) clearActionErrors() {

@@ -15,6 +15,10 @@ import (
 type fakeClient struct {
 	issues        []youtrack.Issue
 	issueRequests *[]youtrack.IssueListOptions
+	projects      []youtrack.Project
+	users         []youtrack.User
+	articles      []youtrack.Article
+	agiles        []youtrack.Agile
 	comments      []youtrack.Comment
 	commentAdds   *[]commentAdd
 	attachments   []youtrack.Attachment
@@ -42,6 +46,26 @@ func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) 
 		*f.issueRequests = append(*f.issueRequests, opts)
 	}
 	return f.issues, f.err
+}
+
+func (f fakeClient) Projects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error) {
+	return f.projects, f.err
+}
+
+func (f fakeClient) Users(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.User, error) {
+	return f.users, f.err
+}
+
+func (f fakeClient) Articles(ctx context.Context, opts youtrack.ArticleListOptions) ([]youtrack.Article, error) {
+	return f.articles, f.err
+}
+
+func (f fakeClient) Agiles(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Agile, error) {
+	return f.agiles, f.err
+}
+
+func (f fakeClient) HelpdeskProjects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error) {
+	return f.projects, f.err
 }
 
 func (f fakeClient) Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error) {
@@ -119,6 +143,131 @@ func TestModelRefreshSetsLoading(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("refresh command = nil")
+	}
+}
+
+func TestSectionSwitchLoadsKnowledgeBase(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'2'}})
+	m = updated.(model)
+	if m.section != sectionKnowledge {
+		t.Fatalf("section = %v, want knowledge", m.section)
+	}
+	if !m.resourcesLoading {
+		t.Fatal("resourcesLoading = false, want true")
+	}
+	if cmd == nil {
+		t.Fatal("resource load command = nil")
+	}
+}
+
+func TestResourceFuzzyFilter(t *testing.T) {
+	resources := []resourceItem{
+		{ID: "KB-1", Title: "Installation Guide"},
+		{ID: "HD-1", Title: "Customer Portal"},
+		{ID: "AG-1", Title: "Sprint Backlog"},
+	}
+	filtered := filterResources(resources, "ig")
+	if len(filtered) == 0 || filtered[0].Title != "Installation Guide" {
+		t.Fatalf("filterResources = %#v, want Installation Guide first", filtered)
+	}
+}
+
+func TestResourceFuzzyFilterIdentityForEmptyQuery(t *testing.T) {
+	property := func(a, b string) bool {
+		resources := []resourceItem{{Title: a}, {Title: b}}
+		filtered := filterResources(resources, "")
+		return len(filtered) == len(resources) && filtered[0].Title == a && filtered[1].Title == b
+	}
+	if err := quick.Check(property, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func TestQueryFiltersCurrentResourceSection(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionKnowledge
+	m.allResources = []resourceItem{
+		{ID: "KB-1", Title: "Install Guide"},
+		{ID: "KB-2", Title: "Billing FAQ"},
+	}
+	m.resources = append([]resourceItem(nil), m.allResources...)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	m.queryInput.SetValue("bill")
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+
+	if len(m.resources) == 0 || m.resources[0].ID != "KB-2" {
+		t.Fatalf("resources = %#v, want KB-2 first", m.resources)
+	}
+}
+
+func TestProjectPromptFiltersIssueQuery(t *testing.T) {
+	var requests []youtrack.IssueListOptions
+	m := newModel(context.Background(), fakeClient{issueRequests: &requests}, Options{Query: "#Unresolved", Top: 25})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "SUP-1", Summary: "Ticket"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	m = updated.(model)
+	m.projectInput.SetValue("SUP")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("project filter command = nil")
+	}
+	_ = cmd()
+	if len(requests) != 1 {
+		t.Fatalf("issue requests = %#v, want one request", requests)
+	}
+	if requests[0].Query != "project: SUP #Unresolved" {
+		t.Fatalf("query = %q, want project filter composed with query", requests[0].Query)
+	}
+}
+
+func TestIssuePromptJumpsToIssue(t *testing.T) {
+	var requests []youtrack.IssueListOptions
+	m := newModel(context.Background(), fakeClient{issueRequests: &requests}, Options{Top: 25})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "SUP-1", Summary: "Ticket"}}})
+	m = updated.(model)
+	m.projectFilter = "SUP"
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	m = updated.(model)
+	m.issueInput.SetValue("ABC-123")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("issue jump command = nil")
+	}
+	_ = cmd()
+	if len(requests) != 1 {
+		t.Fatalf("issue requests = %#v, want one request", requests)
+	}
+	if requests[0].Query != "ABC-123" {
+		t.Fatalf("query = %q, want issue id", requests[0].Query)
+	}
+	if m.projectFilter != "" {
+		t.Fatalf("projectFilter = %q, want cleared for direct issue jump", m.projectFilter)
+	}
+}
+
+func TestMouseClickSwitchesSection(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, cmd := m.Update(tea.MouseMsg(tea.MouseEvent{
+		X:      12,
+		Y:      0,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonLeft,
+	}))
+	m = updated.(model)
+	if m.section != sectionKnowledge {
+		t.Fatalf("section = %v, want knowledge", m.section)
+	}
+	if cmd == nil {
+		t.Fatal("section load command = nil")
 	}
 }
 

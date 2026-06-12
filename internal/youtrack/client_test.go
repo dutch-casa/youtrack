@@ -142,6 +142,110 @@ func TestUsersRequestShape(t *testing.T) {
 	}
 }
 
+func TestArticlesRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/articles" {
+			t.Fatalf("path = %s, want /api/articles", r.URL.Path)
+		}
+		if fields := r.URL.Query().Get("fields"); !strings.Contains(fields, "content") || !strings.Contains(fields, "idReadable") {
+			t.Fatalf("fields = %q, want article fields", fields)
+		}
+		_, _ = w.Write([]byte(`[{"id":"226-1","idReadable":"ABC-A-1","summary":"Guide","project":{"shortName":"ABC"}}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	articles, err := client.Articles(context.Background(), ArticleListOptions{Top: 42})
+	if err != nil {
+		t.Fatalf("Articles() error = %v", err)
+	}
+	if len(articles) != 1 || articles[0].IDReadable != "ABC-A-1" {
+		t.Fatalf("Articles() = %#v", articles)
+	}
+}
+
+func TestProjectArticlesRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/projects/ABC/articles" {
+			t.Fatalf("path = %s, want project articles path", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[{"id":"226-1","idReadable":"ABC-A-1","summary":"Guide"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	articles, err := client.Articles(context.Background(), ArticleListOptions{Project: "ABC"})
+	if err != nil {
+		t.Fatalf("Articles() error = %v", err)
+	}
+	if len(articles) != 1 || articles[0].Summary != "Guide" {
+		t.Fatalf("Articles() = %#v", articles)
+	}
+}
+
+func TestAgilesRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agiles" {
+			t.Fatalf("path = %s, want /api/agiles", r.URL.Path)
+		}
+		if fields := r.URL.Query().Get("fields"); !strings.Contains(fields, "currentSprint") {
+			t.Fatalf("fields = %q, want agile fields", fields)
+		}
+		_, _ = w.Write([]byte(`[{"id":"120-1","name":"Team Board","currentSprint":{"id":"121-1","name":"Sprint 1"}}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	agiles, err := client.Agiles(context.Background(), PageOptions{Top: 42})
+	if err != nil {
+		t.Fatalf("Agiles() error = %v", err)
+	}
+	if len(agiles) != 1 || agiles[0].CurrentSprint.Name != "Sprint 1" {
+		t.Fatalf("Agiles() = %#v", agiles)
+	}
+}
+
+func TestSprintsRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/agiles/120-1/sprints" {
+			t.Fatalf("path = %s, want sprints path", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[{"id":"121-1","name":"Sprint 1"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	sprints, err := client.Sprints(context.Background(), SprintListOptions{AgileID: "120-1"})
+	if err != nil {
+		t.Fatalf("Sprints() error = %v", err)
+	}
+	if len(sprints) != 1 || sprints[0].Name != "Sprint 1" {
+		t.Fatalf("Sprints() = %#v", sprints)
+	}
+}
+
+func TestHelpdeskProjectsFilterProjectType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/projects" {
+			t.Fatalf("path = %s, want /api/admin/projects", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[
+			{"id":"0-1","shortName":"ABC","name":"Alpha","projectType":{"name":"standard"}},
+			{"id":"0-2","shortName":"SUP","name":"Support","projectType":{"name":"helpdesk"}}
+		]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	projects, err := client.HelpdeskProjects(context.Background(), PageOptions{})
+	if err != nil {
+		t.Fatalf("HelpdeskProjects() error = %v", err)
+	}
+	if len(projects) != 1 || projects[0].ShortName != "SUP" {
+		t.Fatalf("HelpdeskProjects() = %#v", projects)
+	}
+}
+
 func TestApplyCommandRequestBody(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/commands" {
