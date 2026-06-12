@@ -17,11 +17,17 @@ type fakeClient struct {
 	issues        []youtrack.Issue
 	issueRequests *[]youtrack.IssueListOptions
 	comments      []youtrack.Comment
+	commentAdds   *[]commentAdd
 	attachments   []youtrack.Attachment
 	activities    []youtrack.Activity
 	links         []youtrack.IssueLink
 	commands      *[]youtrack.ApplyCommandRequest
 	err           error
+}
+
+type commentAdd struct {
+	issueID string
+	text    string
 }
 
 func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error) {
@@ -33,6 +39,13 @@ func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) 
 
 func (f fakeClient) Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error) {
 	return f.comments, f.err
+}
+
+func (f fakeClient) AddComment(ctx context.Context, issueID, text string) (youtrack.Comment, error) {
+	if f.commentAdds != nil {
+		*f.commentAdds = append(*f.commentAdds, commentAdd{issueID: issueID, text: text})
+	}
+	return youtrack.Comment{ID: "c-added", Text: text}, f.err
 }
 
 func (f fakeClient) Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error) {
@@ -314,6 +327,112 @@ func TestCommandModeSupportsCursorEditing(t *testing.T) {
 	}
 }
 
+func TestCommentModeAddsComment(t *testing.T) {
+	var commentAdds []commentAdd
+	m := newModel(context.Background(), fakeClient{
+		comments:    []youtrack.Comment{{Text: "new note", Author: youtrack.User{Login: "jane"}}},
+		commentAdds: &commentAdds,
+	}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.activities["ABC-1"] = []youtrack.Activity{{Type: "stale"}}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = updated.(model)
+	if m.inputMode != modeComment {
+		t.Fatalf("inputMode = %v, want modeComment", m.inputMode)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("  new note  ")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.commentRunning {
+		t.Fatal("commentRunning = false, want true")
+	}
+	if cmd == nil {
+		t.Fatal("add comment command = nil")
+	}
+
+	msg := cmd().(addCommentMsg)
+	if msg.issueID != "ABC-1" || msg.text != "new note" {
+		t.Fatalf("addCommentMsg = %#v", msg)
+	}
+	if len(commentAdds) != 1 || commentAdds[0].issueID != "ABC-1" || commentAdds[0].text != "new note" {
+		t.Fatalf("commentAdds = %#v", commentAdds)
+	}
+
+	updated, reload := m.Update(msg)
+	m = updated.(model)
+	if m.commentRunning {
+		t.Fatal("commentRunning = true, want false")
+	}
+	if m.pane != commentsPane {
+		t.Fatalf("pane = %v, want commentsPane", m.pane)
+	}
+	if _, ok := m.activities["ABC-1"]; ok {
+		t.Fatalf("activities cache = %#v, want invalidated selected issue", m.activities)
+	}
+	if !strings.Contains(m.status, "Commented on ABC-1") {
+		t.Fatalf("status = %q, want commented status", m.status)
+	}
+	if reload == nil {
+		t.Fatal("comment reload command = nil")
+	}
+
+	commentsMsg := reload().(commentsMsg)
+	if commentsMsg.issueID != "ABC-1" || len(commentsMsg.comments) != 1 || commentsMsg.comments[0].Text != "new note" {
+		t.Fatalf("commentsMsg = %#v, want reloaded comments", commentsMsg)
+	}
+}
+
+func TestCommentModeCancels(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("new note")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+
+	if m.inputMode != modeNavigation || m.commentInput.Value() != "" {
+		t.Fatalf("inputMode = %v, comment input = %q; want canceled", m.inputMode, m.commentInput.Value())
+	}
+	if cmd != nil {
+		t.Fatal("cancel command != nil")
+	}
+}
+
+func TestCommentResponseDoesNotReloadDifferentSelection(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{
+		{IDReadable: "ABC-1", Summary: "One"},
+		{IDReadable: "ABC-2", Summary: "Two"},
+	}})
+	m = updated.(model)
+	m.selected = 1
+	m.comments["ABC-1"] = []youtrack.Comment{{Text: "stale"}}
+	m.comments["ABC-2"] = []youtrack.Comment{{Text: "current"}}
+
+	updated, cmd := m.Update(addCommentMsg{issueID: "ABC-1", text: "new note"})
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("reload command != nil for non-selected commented issue")
+	}
+	if m.pane != detailsPane {
+		t.Fatalf("pane = %v, want unchanged detailsPane", m.pane)
+	}
+	if _, ok := m.comments["ABC-1"]; ok {
+		t.Fatalf("comments cache = %#v, want stale commented issue invalidated", m.comments)
+	}
+	if got := m.comments["ABC-2"]; len(got) != 1 || got[0].Text != "current" {
+		t.Fatalf("current issue comments = %#v, want untouched current cache", got)
+	}
+}
+
 func TestInputModeIsExclusive(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
@@ -332,6 +451,22 @@ func TestInputModeIsExclusive(t *testing.T) {
 	}
 	if m.commandInput.Value() != "/" {
 		t.Fatalf("command input = %q, want slash typed into command prompt", m.commandInput.Value())
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'c'}})
+	m = updated.(model)
+	if m.inputMode != modeComment {
+		t.Fatalf("inputMode = %v, want modeComment", m.inputMode)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	m = updated.(model)
+	if m.inputMode != modeComment {
+		t.Fatalf("inputMode = %v, want comment prompt to keep focus", m.inputMode)
+	}
+	if m.commentInput.Value() != ":" {
+		t.Fatalf("comment input = %q, want colon typed into comment prompt", m.commentInput.Value())
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})

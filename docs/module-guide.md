@@ -26,6 +26,7 @@ See also:
 - [0022 TUI Page Bounds](adr/0022-tui-page-bounds.md)
 - [0023 Raw Request Headers](adr/0023-raw-request-headers.md)
 - [0024 TUI Field Projection](adr/0024-tui-field-projection.md)
+- [0025 TUI Quick Comments](adr/0025-tui-quick-comments.md)
 
 ## `internal/auth`
 
@@ -55,4 +56,4 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 Secret: This module hides the terminal interaction state for browsing issues.
 
-Role: It owns keyboard bindings, layout, selection state, lazy-loaded issue panes, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.
+Role: It owns keyboard bindings, layout, selection state, lazy-loaded issue panes, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals, formatting code owns terminal-safe text projection, and styles own the restrained YouTrack-like terminal skin.

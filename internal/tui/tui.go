@@ -23,6 +23,7 @@ type Client interface {
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
 	IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error)
+	AddComment(ctx context.Context, issueID, text string) (youtrack.Comment, error)
 	ApplyCommand(ctx context.Context, req youtrack.ApplyCommandRequest) (youtrack.CommandResult, error)
 }
 
@@ -41,6 +42,7 @@ type inputMode int
 const (
 	modeNavigation inputMode = iota
 	modeCommand
+	modeComment
 	modeQuery
 )
 
@@ -69,6 +71,10 @@ type model struct {
 	commandInput   textinput.Model
 	commandRunning bool
 	commandErr     error
+
+	commentInput   textinput.Model
+	commentRunning bool
+	commentErr     error
 
 	queryInput textinput.Model
 
@@ -124,6 +130,12 @@ type commandMsg struct {
 	err     error
 }
 
+type addCommentMsg struct {
+	issueID string
+	text    string
+	err     error
+}
+
 func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
@@ -132,6 +144,10 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	commandInput.Prompt = ": "
 	commandInput.Placeholder = "State Fixed"
 	commandInput.CharLimit = 512
+	commentInput := textinput.New()
+	commentInput.Prompt = "comment> "
+	commentInput.Placeholder = "Add a quick comment"
+	commentInput.CharLimit = 2048
 	queryInput := textinput.New()
 	queryInput.Prompt = "/ "
 	queryInput.Placeholder = "project: ABC #Unresolved"
@@ -144,6 +160,7 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 		loading:      true,
 		detail:       detail,
 		commandInput: commandInput,
+		commentInput: commentInput,
 		queryInput:   queryInput,
 		comments:     make(map[string][]youtrack.Comment),
 		attachments:  make(map[string][]youtrack.Attachment),
@@ -165,6 +182,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		switch m.inputMode {
 		case modeCommand:
 			return m.updateCommandInput(msg)
+		case modeComment:
+			return m.updateCommentInput(msg)
 		case modeQuery:
 			return m.updateQueryInput(msg)
 		}
@@ -180,6 +199,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.commandInput.Reset()
 				m.commandInput.Focus()
 				m.commandErr = nil
+				m.commentErr = nil
+				m.status = ""
+				return m, textinput.Blink
+			}
+		case "c":
+			if m.currentIssueID() != "" && !m.commentRunning {
+				m.inputMode = modeComment
+				m.commentInput.Reset()
+				m.commentInput.Focus()
+				m.commandErr = nil
+				m.commentErr = nil
 				m.status = ""
 				return m, textinput.Blink
 			}
@@ -190,6 +220,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.queryInput.SetValue(m.opts.Query)
 				m.queryInput.Focus()
 				m.commandErr = nil
+				m.commentErr = nil
 				m.status = ""
 				return m, textinput.Blink
 			}
@@ -233,11 +264,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "r":
 			m.commandErr = nil
+			m.commentErr = nil
 			m.inputMode = modeNavigation
 			m.commandRunning = false
+			m.commentRunning = false
 			m.commandInput.Blur()
 			m.commandInput.Reset()
 			m.commandInput.SetValue("")
+			m.commentInput.Blur()
+			m.commentInput.Reset()
+			m.commentInput.SetValue("")
 			m.queryInput.Blur()
 			m.queryInput.Reset()
 			m.queryInput.SetValue("")
@@ -301,6 +337,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		delete(m.activities, msg.issueID)
 		delete(m.links, msg.issueID)
 		return m, m.loadIssues
+	case addCommentMsg:
+		m.commentRunning = false
+		m.commentErr = msg.err
+		if msg.err != nil {
+			m.status = ""
+			return m, nil
+		}
+		m.status = "Commented on " + msg.issueID
+		m.commentInput.Reset()
+		m.commentInput.SetValue("")
+		delete(m.comments, msg.issueID)
+		delete(m.activities, msg.issueID)
+		if m.currentIssueID() != msg.issueID {
+			return m, nil
+		}
+		m.pane = commentsPane
+		m.detail.GotoTop()
+		return m.withSelectedCommentsLoading()
 	}
 	return m, nil
 }
@@ -368,6 +422,46 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.inputMode = modeNavigation
+		m.commentInput.Blur()
+		m.commentInput.Reset()
+		m.commentInput.SetValue("")
+		m.commentErr = nil
+		return m, nil
+	case "enter":
+		if m.commentRunning {
+			return m, nil
+		}
+		text := strings.TrimSpace(m.commentInput.Value())
+		if text == "" {
+			m.commentErr = nil
+			m.inputMode = modeNavigation
+			m.commentInput.Blur()
+			m.commentInput.SetValue("")
+			return m, nil
+		}
+		issueID := m.currentIssueID()
+		if issueID == "" {
+			m.inputMode = modeNavigation
+			m.commentInput.Blur()
+			m.commentInput.SetValue("")
+			return m, nil
+		}
+		m.inputMode = modeNavigation
+		m.commentInput.Blur()
+		m.commentRunning = true
+		m.commentErr = nil
+		m.status = "Adding comment..."
+		return m, m.addComment(issueID, text)
+	}
+	var cmd tea.Cmd
+	m.commentInput, cmd = m.commentInput.Update(msg)
+	return m, cmd
+}
+
 func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
@@ -386,6 +480,7 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.opts.Skip = 0
 		m.selected = 0
 		m.commandErr = nil
+		m.commentErr = nil
 		return m.withIssueListLoading("Loading query...")
 	}
 	var cmd tea.Cmd
@@ -541,6 +636,13 @@ func (m model) applyCommand(issueID, query string) tea.Cmd {
 			Query:   query,
 		})
 		return commandMsg{issueID: issueID, query: query, err: err}
+	}
+}
+
+func (m model) addComment(issueID, text string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := m.client.AddComment(m.ctx, issueID, text)
+		return addCommentMsg{issueID: issueID, text: text, err: err}
 	}
 }
 
