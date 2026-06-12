@@ -2,6 +2,7 @@ package tui
 
 import (
 	"encoding/base64"
+	"errors"
 	"fmt"
 	"mime"
 	"os"
@@ -21,6 +22,13 @@ const (
 	imageProtocolKitty imageProtocol = "kitty"
 )
 
+var errInvalidImageProtocol = errors.New("image protocol must be auto, none, kitty, or iterm2")
+
+func ValidateImageProtocol(value string) error {
+	_, err := parseImageProtocolName(value)
+	return err
+}
+
 type attachmentPreview struct {
 	Data []byte
 	Err  error
@@ -30,10 +38,65 @@ func detectImageProtocol() imageProtocol {
 	switch {
 	case os.Getenv("KITTY_WINDOW_ID") != "" || strings.Contains(os.Getenv("TERM"), "kitty"):
 		return imageProtocolKitty
+	case strings.EqualFold(os.Getenv("TERM_PROGRAM"), "ghostty") || strings.Contains(os.Getenv("TERM"), "ghostty") || os.Getenv("GHOSTTY_RESOURCES_DIR") != "":
+		return imageProtocolKitty
 	case os.Getenv("TERM_PROGRAM") == "iTerm.app" || os.Getenv("TERM_PROGRAM") == "WezTerm" || os.Getenv("WEZTERM_EXECUTABLE") != "":
 		return imageProtocolITerm
 	default:
 		return imageProtocolNone
+	}
+}
+
+func resolveImageProtocol(value string) (imageProtocol, error) {
+	value = requestedImageProtocol(value)
+	name, err := parseImageProtocolName(value)
+	if err != nil {
+		return imageProtocolNone, err
+	}
+	switch name {
+	case "", "auto":
+		return detectImageProtocol(), nil
+	case "none":
+		return imageProtocolNone, nil
+	case "kitty":
+		return imageProtocolKitty, nil
+	case "iterm2":
+		return imageProtocolITerm, nil
+	}
+	return imageProtocolNone, nil
+}
+
+func requestedImageProtocol(value string) string {
+	value = strings.TrimSpace(value)
+	if value != "" && !strings.EqualFold(value, "auto") {
+		return value
+	}
+	if env := strings.TrimSpace(os.Getenv("YOUTRACK_IMAGE_PROTOCOL")); env != "" {
+		return env
+	}
+	if env := strings.TrimSpace(os.Getenv("YT_IMAGE_PROTOCOL")); env != "" {
+		return env
+	}
+	return value
+}
+
+func normalizeImageProtocolName(value string) string {
+	value = strings.ToLower(strings.TrimSpace(value))
+	switch value {
+	case "iterm", "iterm2", "i-term2":
+		return "iterm2"
+	default:
+		return value
+	}
+}
+
+func parseImageProtocolName(value string) (string, error) {
+	name := normalizeImageProtocolName(value)
+	switch name {
+	case "", "auto", "none", "kitty", "iterm2":
+		return name, nil
+	default:
+		return "", errInvalidImageProtocol
 	}
 }
 

@@ -14,11 +14,12 @@ import (
 )
 
 type Options struct {
-	Query   string
-	Top     int
-	Skip    int
-	BaseURL string
-	OpenURL func(string) error
+	Query         string
+	Top           int
+	Skip          int
+	BaseURL       string
+	ImageProtocol string
+	OpenURL       func(string) error
 }
 
 type Client interface {
@@ -63,9 +64,14 @@ const (
 )
 
 func Run(ctx context.Context, client Client, opts Options, out io.Writer) error {
+	protocol, err := resolveImageProtocol(opts.ImageProtocol)
+	if err != nil {
+		return err
+	}
 	model := newModel(ctx, client, opts)
+	model.imageProtocol = protocol
 	program := tea.NewProgram(model, tea.WithOutput(out), tea.WithAltScreen(), tea.WithMouseCellMotion())
-	_, err := program.Run()
+	_, err = program.Run()
 	return err
 }
 

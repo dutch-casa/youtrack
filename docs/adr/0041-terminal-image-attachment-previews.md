@@ -22,6 +22,7 @@ Add `Client.AttachmentContent` in `internal/youtrack`. It downloads attachment t
 Add optional attachment previews in `internal/tui`:
 
 - Detect Kitty and iTerm2-compatible terminal image support from environment variables.
+- Allow explicit selection with `yt interactive --image-protocol auto|none|kitty|iterm2`, `YOUTRACK_IMAGE_PROTOCOL`, or `YT_IMAGE_PROTOCOL`.
 - Load previews asynchronously through Bubble Tea commands after attachment metadata is loaded.
 - Render cached previews below image attachment metadata.
 - Keep unsupported terminals text-only.
@@ -32,6 +33,8 @@ Add optional attachment previews in `internal/tui`:
 Screenshots and other image attachments can appear inline in terminals that support the image protocol.
 
 Unsupported terminals keep the existing attachment list behavior.
+
+Users can force the protocol when auto-detection is too conservative for a terminal or multiplexer setup.
 
 Preview loading does not block `View`; it follows the existing Bubble Tea message/update flow.
 

@@ -1162,6 +1162,7 @@ func (a *app) upgradeCommand() *cobra.Command {
 func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 	var query string
 	var top int
+	var imageProtocol string
 	cmd := &cobra.Command{
 		Use:     "interactive",
 		Aliases: []string{"ui", "tui"},
@@ -1170,21 +1171,26 @@ func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 			if top < 1 {
 				return errors.New("--top must be greater than zero")
 			}
+			if err := tui.ValidateImageProtocol(imageProtocol); err != nil {
+				return err
+			}
 			creds, err := a.credentials(cmd.Context())
 			if err != nil {
 				return err
 			}
 			client := youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil)
 			return tui.Run(ctx, client, tui.Options{
-				Query:   query,
-				Top:     top,
-				BaseURL: creds.NormalizedBaseURL(),
-				OpenURL: openBrowser,
+				Query:         query,
+				Top:           top,
+				BaseURL:       creds.NormalizedBaseURL(),
+				ImageProtocol: imageProtocol,
+				OpenURL:       openBrowser,
 			}, a.out)
 		},
 	}
 	cmd.Flags().StringVarP(&query, "query", "q", "", "initial YouTrack issue query")
 	cmd.Flags().IntVar(&top, "top", 50, "maximum issues to load")
+	cmd.Flags().StringVar(&imageProtocol, "image-protocol", "auto", "attachment preview image protocol: auto, none, kitty, or iterm2")
 	return cmd
 }
 

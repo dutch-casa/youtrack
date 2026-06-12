@@ -1,13 +1,16 @@
 package tui
 
 import (
+	"regexp"
 	"strings"
 
 	"github.com/charmbracelet/glamour"
 )
 
+var youtrackImagePattern = regexp.MustCompile(`(?m)(^|[\s(])((?:[./]|https?://)[^\s)]+\.(?:png|jpe?g|gif|webp|bmp|svg))(?:\{[^}\n]*\})`)
+
 func renderMarkdown(value string, width int) string {
-	value = strings.TrimSpace(terminalText(value))
+	value = strings.TrimSpace(normalizeYouTrackMarkdown(terminalText(value)))
 	if value == "" {
 		return "No description"
 	}
@@ -30,4 +33,20 @@ func renderMarkdown(value string, width int) string {
 		return value
 	}
 	return rendered
+}
+
+func normalizeYouTrackMarkdown(value string) string {
+	return youtrackImagePattern.ReplaceAllStringFunc(value, func(match string) string {
+		parts := youtrackImagePattern.FindStringSubmatch(match)
+		if len(parts) != 3 {
+			return match
+		}
+		prefix := parts[1]
+		path := parts[2]
+		name := path
+		if slash := strings.LastIndex(name, "/"); slash >= 0 {
+			name = name[slash+1:]
+		}
+		return prefix + "![" + name + "](" + path + ")"
+	})
 }

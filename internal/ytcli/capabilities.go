@@ -373,6 +373,7 @@ func newCommandReference() []capabilityCommandSpec {
 			Flags: []capabilityFlag{
 				valueFlag("query", "q", "QUERY", "", "Initial YouTrack issue query"),
 				valueFlag("top", "", "N", "50", "Maximum issues to load"),
+				valueFlag("image-protocol", "", "auto|none|kitty|iterm2", "auto", "Terminal image protocol for attachment previews"),
 			},
 			AuthRequired: true,
 			Mutates:      true,

@@ -443,6 +443,19 @@ func TestMarkdownRenderingFormatsTables(t *testing.T) {
 	}
 }
 
+func TestMarkdownRenderingNormalizesYouTrackImageMarkup(t *testing.T) {
+	rendered := renderMarkdown("Before\n\n/image.png{width=70%}\n\nAfter", 72)
+	plain := stripANSI(rendered)
+	if strings.Contains(plain, "{width=70%}") {
+		t.Fatalf("renderMarkdown() = %q, want YouTrack image attributes hidden", rendered)
+	}
+	for _, want := range []string{"Before", "image.png", "After"} {
+		if !strings.Contains(plain, want) {
+			t.Fatalf("renderMarkdown() = %q, want %q", rendered, want)
+		}
+	}
+}
+
 func TestArticleResourcesUseMarkdownSource(t *testing.T) {
 	resources := articleResources([]youtrack.Article{{
 		IDReadable: "KB-1",
@@ -654,6 +667,36 @@ func TestAttachmentsPaneRendersITermImagePreview(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "\x1b]1337;File=") {
 		t.Fatalf("View() = %q, want iTerm inline image escape", view)
+	}
+}
+
+func TestImageProtocolCanBeForcedFromOption(t *testing.T) {
+	protocol, err := resolveImageProtocol("kitty")
+	if err != nil {
+		t.Fatalf("resolveImageProtocol() error = %v", err)
+	}
+	if protocol != imageProtocolKitty {
+		t.Fatalf("resolveImageProtocol() = %q, want kitty", protocol)
+	}
+}
+
+func TestImageProtocolCanBeForcedFromEnvironment(t *testing.T) {
+	t.Setenv("YOUTRACK_IMAGE_PROTOCOL", "iterm")
+
+	protocol, err := resolveImageProtocol("auto")
+	if err != nil {
+		t.Fatalf("resolveImageProtocol() error = %v", err)
+	}
+	if protocol != imageProtocolITerm {
+		t.Fatalf("resolveImageProtocol() = %q, want iterm2", protocol)
+	}
+}
+
+func TestDetectImageProtocolDetectsGhostty(t *testing.T) {
+	t.Setenv("TERM_PROGRAM", "ghostty")
+
+	if protocol := detectImageProtocol(); protocol != imageProtocolKitty {
+		t.Fatalf("detectImageProtocol() = %q, want kitty", protocol)
 	}
 }
 

@@ -107,6 +107,13 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	if raw.Output != "Exact response bytes to stdout or --output-file." || !findCapabilityFlag(raw.Flags, "header").Repeat || !findCapabilityFlag(raw.Flags, "query").Repeat {
 		t.Fatalf("yt raw capability = %#v, want exact byte output and repeatable header/query", raw)
 	}
+	interactive := findCapabilityCommand(doc.CommandReference, "yt interactive")
+	if interactive.Command == "" {
+		t.Fatalf("yt interactive capability = %#v, want image-protocol flag", interactive)
+	}
+	if findCapabilityFlag(interactive.Flags, "image-protocol").Name == "" {
+		t.Fatalf("yt interactive flags = %#v, want image-protocol flag", interactive.Flags)
+	}
 	if !capabilityBridgeContains(doc.Completeness, "yt commands apply", "YouTrack command-language workflows") {
 		t.Fatalf("capabilities completeness = %#v, want command-language bridge", doc.Completeness)
 	}
@@ -549,6 +556,11 @@ func TestListPaginationRejectsInvalidValuesBeforeAuth(t *testing.T) {
 			name: "interactive top",
 			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "interactive", "--top", "0"},
 			want: "--top",
+		},
+		{
+			name: "interactive image protocol",
+			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "interactive", "--image-protocol", "sixel"},
+			want: "image protocol",
 		},
 	}
 
