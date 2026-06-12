@@ -3,10 +3,16 @@ package tui
 import (
 	"fmt"
 	"html"
+	"regexp"
 	"strings"
 	"time"
 
 	"github.com/dutch-casa/youtrack/internal/youtrack"
+)
+
+var (
+	ansiControlPattern = regexp.MustCompile(`\x1b\[[0-9;?]*[ -/]*[@-~]`)
+	bareSGRPattern     = regexp.MustCompile(`\[(?:0|[0-9]+(?:;[0-9]+)+)m`)
 )
 
 func truncate(value string, width int) string {
@@ -44,6 +50,8 @@ func trimBlank(value string) string {
 
 func terminalText(value string) string {
 	value = html.UnescapeString(value)
+	value = ansiControlPattern.ReplaceAllString(value, "")
+	value = bareSGRPattern.ReplaceAllString(value, "")
 	value = strings.ReplaceAll(value, "\u00a0", " ")
 	value = strings.ReplaceAll(value, "\u202f", " ")
 	value = strings.ReplaceAll(value, "\r\n", "\n")

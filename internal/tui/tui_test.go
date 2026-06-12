@@ -396,6 +396,13 @@ func TestTerminalTextUnescapesEntities(t *testing.T) {
 	}
 }
 
+func TestTerminalTextStripsANSIControls(t *testing.T) {
+	got := inlineText("\x1b[1;94mBlue\x1b[0m [1;94mStill blue[0m")
+	if got != "Blue Still blue" {
+		t.Fatalf("inlineText() = %q, want ANSI-stripped text", got)
+	}
+}
+
 func TestMarkdownRenderingFormatsDocumentText(t *testing.T) {
 	rendered := renderMarkdown("# Title\n\n- A&nbsp;B\n\n```go\nfmt.Println(\"x\")\n```", 60)
 	if strings.Contains(rendered, "&nbsp;") || strings.Contains(rendered, "```") {
@@ -404,6 +411,17 @@ func TestMarkdownRenderingFormatsDocumentText(t *testing.T) {
 	plain := stripANSI(rendered)
 	if !strings.Contains(plain, "Title") || !strings.Contains(plain, "A B") || !strings.Contains(plain, "fmt.Println") {
 		t.Fatalf("renderMarkdown() = %q, want rendered content", rendered)
+	}
+}
+
+func TestMarkdownRenderingStripsSourceANSIControls(t *testing.T) {
+	rendered := renderMarkdown("# [1;94mTitle[0m\n\n\x1b[32mBody\x1b[0m", 60)
+	plain := stripANSI(rendered)
+	if strings.Contains(plain, "[1;94m") || strings.Contains(plain, "[0m") || strings.Contains(plain, "\x1b[") {
+		t.Fatalf("renderMarkdown() = %q, want source ANSI controls stripped", rendered)
+	}
+	if !strings.Contains(plain, "Title") || !strings.Contains(plain, "Body") {
+		t.Fatalf("renderMarkdown() = %q, want source text preserved", rendered)
 	}
 }
 
