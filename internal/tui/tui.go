@@ -23,6 +23,7 @@ type Client interface {
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
 	IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error)
+	WorkItems(ctx context.Context, opts youtrack.WorkItemListOptions) ([]youtrack.WorkItem, error)
 	AddComment(ctx context.Context, issueID, text string) (youtrack.Comment, error)
 	ApplyCommand(ctx context.Context, req youtrack.ApplyCommandRequest) (youtrack.CommandResult, error)
 }
@@ -34,6 +35,7 @@ const (
 	commentsPane
 	linksPane
 	activitiesPane
+	workItemsPane
 	attachmentsPane
 )
 
@@ -90,6 +92,10 @@ type model struct {
 	activitiesLoading bool
 	activitiesErr     error
 
+	workItems        map[string][]youtrack.WorkItem
+	workItemsLoading bool
+	workItemsErr     error
+
 	links        map[string][]youtrack.IssueLink
 	linksLoading bool
 	linksErr     error
@@ -116,6 +122,12 @@ type activitiesMsg struct {
 	issueID    string
 	activities []youtrack.Activity
 	err        error
+}
+
+type workItemsMsg struct {
+	issueID   string
+	workItems []youtrack.WorkItem
+	err       error
 }
 
 type linksMsg struct {
@@ -165,6 +177,7 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 		comments:     make(map[string][]youtrack.Comment),
 		attachments:  make(map[string][]youtrack.Attachment),
 		activities:   make(map[string][]youtrack.Activity),
+		workItems:    make(map[string][]youtrack.WorkItem),
 		links:        make(map[string][]youtrack.IssueLink),
 	}
 }
@@ -312,6 +325,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil {
 			m.activities[msg.issueID] = msg.activities
+		}
+	case workItemsMsg:
+		if m.currentIssueID() == msg.issueID {
+			m.workItemsLoading = false
+			m.workItemsErr = msg.err
+			m.detail.GotoTop()
+		}
+		if msg.err == nil {
+			m.workItems[msg.issueID] = msg.workItems
 		}
 	case linksMsg:
 		if m.currentIssueID() == msg.issueID {
@@ -516,6 +538,9 @@ func (m *model) clearPaneCaches() {
 	m.activities = make(map[string][]youtrack.Activity)
 	m.activitiesErr = nil
 	m.activitiesLoading = false
+	m.workItems = make(map[string][]youtrack.WorkItem)
+	m.workItemsErr = nil
+	m.workItemsLoading = false
 	m.links = make(map[string][]youtrack.IssueLink)
 	m.linksErr = nil
 	m.linksLoading = false
@@ -559,6 +584,8 @@ func (m model) withSelectedPaneLoading() (tea.Model, tea.Cmd) {
 		return m.withSelectedLinksLoading()
 	case activitiesPane:
 		return m.withSelectedActivitiesLoading()
+	case workItemsPane:
+		return m.withSelectedWorkItemsLoading()
 	case attachmentsPane:
 		return m.withSelectedAttachmentsLoading()
 	default:
@@ -579,6 +606,21 @@ func (m model) withSelectedActivitiesLoading() (tea.Model, tea.Cmd) {
 	m.activitiesLoading = true
 	m.activitiesErr = nil
 	return m, m.loadActivities(issueID)
+}
+
+func (m model) withSelectedWorkItemsLoading() (tea.Model, tea.Cmd) {
+	issueID := m.currentIssueID()
+	if issueID == "" {
+		return m, nil
+	}
+	if _, ok := m.workItems[issueID]; ok {
+		m.workItemsLoading = false
+		m.workItemsErr = nil
+		return m, nil
+	}
+	m.workItemsLoading = true
+	m.workItemsErr = nil
+	return m, m.loadWorkItems(issueID)
 }
 
 func (m model) withSelectedLinksLoading() (tea.Model, tea.Cmd) {
@@ -622,6 +664,13 @@ func (m model) loadActivities(issueID string) tea.Cmd {
 	}
 }
 
+func (m model) loadWorkItems(issueID string) tea.Cmd {
+	return func() tea.Msg {
+		workItems, err := m.client.WorkItems(m.ctx, youtrack.WorkItemListOptions{IssueID: issueID, Top: 42})
+		return workItemsMsg{issueID: issueID, workItems: workItems, err: err}
+	}
+}
+
 func (m model) loadLinks(issueID string) tea.Cmd {
 	return func() tea.Msg {
 		links, err := m.client.IssueLinks(m.ctx, youtrack.IssueLinkListOptions{IssueID: issueID, Top: 42})
@@ -662,6 +711,8 @@ func (p pane) next() pane {
 	case linksPane:
 		return activitiesPane
 	case activitiesPane:
+		return workItemsPane
+	case workItemsPane:
 		return attachmentsPane
 	default:
 		return detailsPane

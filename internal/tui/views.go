@@ -98,6 +98,8 @@ func (m model) issuePaneContent() string {
 		return m.issueLinks()
 	case activitiesPane:
 		return m.issueActivities()
+	case workItemsPane:
+		return m.issueWorkItems()
 	case attachmentsPane:
 		return m.issueAttachments()
 	default:
@@ -209,6 +211,30 @@ func (m model) issueActivities() string {
 	return strings.Join(lines, "\n")
 }
 
+func (m model) issueWorkItems() string {
+	issueID := m.currentIssueID()
+	if m.workItemsLoading {
+		return "Loading work items..."
+	}
+	if m.workItemsErr != nil {
+		return "Error: " + m.workItemsErr.Error()
+	}
+	workItems := m.workItems[issueID]
+	if len(workItems) == 0 {
+		return titleStyle.Render(issueID) + "\n\nNo work items"
+	}
+
+	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Work Items"), ""}
+	for _, item := range workItems {
+		lines = append(lines, workItemLine(item))
+		if strings.TrimSpace(item.Text) != "" {
+			lines = append(lines, strings.TrimSpace(item.Text))
+		}
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
 func (m model) issueAttachments() string {
 	issueID := m.currentIssueID()
 	if m.attachmentsLoading {
@@ -256,5 +282,5 @@ func (m model) footer() string {
 	if m.status != "" {
 		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  c comment  n/p page  : command  tab panes  r refresh  q quit")
 	}
-	return helpStyle.Render("j/k move  / query  c comment  n/p page  tab details/comments/links/activity/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  / query  c comment  n/p page  tab details/comments/links/activity/work/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
 }

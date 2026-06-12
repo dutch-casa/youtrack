@@ -20,6 +20,7 @@ type fakeClient struct {
 	commentAdds   *[]commentAdd
 	attachments   []youtrack.Attachment
 	activities    []youtrack.Activity
+	workItems     []youtrack.WorkItem
 	links         []youtrack.IssueLink
 	commands      *[]youtrack.ApplyCommandRequest
 	err           error
@@ -54,6 +55,10 @@ func (f fakeClient) Attachments(ctx context.Context, opts youtrack.AttachmentLis
 
 func (f fakeClient) Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error) {
 	return f.activities, f.err
+}
+
+func (f fakeClient) WorkItems(ctx context.Context, opts youtrack.WorkItemListOptions) ([]youtrack.WorkItem, error) {
+	return f.workItems, f.err
 }
 
 func (f fakeClient) IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error) {
@@ -133,6 +138,8 @@ func TestTabCyclesToAttachmentsPane(t *testing.T) {
 	m = updated.(model)
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
 	m = updated.(model)
 	if m.pane != attachmentsPane {
@@ -143,6 +150,23 @@ func TestTabCyclesToAttachmentsPane(t *testing.T) {
 	}
 	if cmd == nil {
 		t.Fatal("attachment load command = nil")
+	}
+}
+
+func TestTabLoadsWorkItemsPane(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	for range 4 {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+		m = updated.(model)
+	}
+	if m.pane != workItemsPane {
+		t.Fatalf("pane = %v, want workItemsPane", m.pane)
+	}
+	if !m.workItemsLoading {
+		t.Fatal("workItemsLoading = false, want true")
 	}
 }
 
@@ -230,6 +254,31 @@ func TestActivitiesPaneRendersActivity(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "Activity") || !strings.Contains(view, "jane") || !strings.Contains(view, "Looks fixed") {
 		t.Fatalf("View() = %q, want activity", view)
+	}
+}
+
+func TestWorkItemsPaneRendersWorkItems(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = workItemsPane
+	updated, _ = m.Update(workItemsMsg{
+		issueID: "ABC-1",
+		workItems: []youtrack.WorkItem{{
+			Text:     "implementation",
+			Date:     1704067200000,
+			Duration: youtrack.DurationValue{Minutes: 90},
+			Type:     youtrack.WorkItemType{Name: "Development"},
+			Author:   youtrack.User{Login: "jane"},
+		}},
+	})
+	m = updated.(model)
+
+	view := m.View()
+	for _, want := range []string{"Work Items", "1h 30m", "Development", "jane", "2024-01-01", "implementation"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want work item field %q", view, want)
+		}
 	}
 }
 
@@ -491,6 +540,7 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 	m = updated.(model)
 	m.selected = 1
 	m.comments["ABC-2"] = []youtrack.Comment{{ID: "c-1", Text: "stale"}}
+	m.workItems["ABC-2"] = []youtrack.WorkItem{{Text: "stale time"}}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m = updated.(model)
@@ -521,6 +571,9 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 	}
 	if len(m.comments) != 0 {
 		t.Fatalf("comments cache = %#v, want cleared cache", m.comments)
+	}
+	if len(m.workItems) != 0 {
+		t.Fatalf("work items cache = %#v, want cleared cache", m.workItems)
 	}
 
 	msg := cmd().(issuesMsg)

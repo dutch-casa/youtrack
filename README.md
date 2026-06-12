@@ -67,4 +67,4 @@ For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell
 yt interactive --query 'project: ABC #Unresolved'
 ```
 
-Keys: `j/k` move, `/` changes the YouTrack issue query, `c` adds a quick comment, `n/p` moves between issue result pages, `tab` switches details/comments/links/activity/attachments, `pgup/pgdn` scrolls the selected pane, `:` applies a YouTrack command to the selected issue, `g/G` top/bottom, `r` refresh, `q` quit.
+Keys: `j/k` move, `/` changes the YouTrack issue query, `c` adds a quick comment, `n/p` moves between issue result pages, `tab` switches details/comments/links/activity/work/attachments, `pgup/pgdn` scrolls the selected pane, `:` applies a YouTrack command to the selected issue, `g/G` top/bottom, `r` refresh, `q` quit.

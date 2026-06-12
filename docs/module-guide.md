@@ -27,6 +27,7 @@ See also:
 - [0023 Raw Request Headers](adr/0023-raw-request-headers.md)
 - [0024 TUI Field Projection](adr/0024-tui-field-projection.md)
 - [0025 TUI Quick Comments](adr/0025-tui-quick-comments.md)
+- [0026 TUI Work Item Browsing](adr/0026-tui-work-item-browsing.md)
 
 ## `internal/auth`
 

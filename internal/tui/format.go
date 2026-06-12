@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/dutchcaz/youtrack/internal/youtrack"
 )
@@ -80,6 +81,36 @@ func formatBytes(size int64) string {
 		}
 	}
 	return fmt.Sprintf("%.1f TiB", value/unit)
+}
+
+func workItemLine(item youtrack.WorkItem) string {
+	duration := firstNonEmpty(item.Duration.Presentation, formatMinutes(item.Duration.Minutes))
+	author := firstNonEmpty(item.Author.FullName, item.Author.Name, item.Author.Login, item.Creator.FullName, item.Creator.Name, item.Creator.Login)
+	kind := item.Type.Name
+	date := formatMillisDate(item.Date)
+	return strings.TrimSpace(strings.Join(nonEmpty(duration, kind, author, date), "  "))
+}
+
+func formatMinutes(minutes int) string {
+	if minutes <= 0 {
+		return ""
+	}
+	hours := minutes / 60
+	remaining := minutes % 60
+	if hours == 0 {
+		return fmt.Sprintf("%dm", remaining)
+	}
+	if remaining == 0 {
+		return fmt.Sprintf("%dh", hours)
+	}
+	return fmt.Sprintf("%dh %dm", hours, remaining)
+}
+
+func formatMillisDate(value int64) string {
+	if value <= 0 {
+		return ""
+	}
+	return time.UnixMilli(value).UTC().Format("2006-01-02")
 }
 
 func linkedIssues(link youtrack.IssueLink) []youtrack.Issue {
