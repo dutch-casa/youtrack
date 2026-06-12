@@ -61,8 +61,11 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 
 	cmd.AddCommand(a.authCommand())
 	cmd.AddCommand(a.meCommand())
+	cmd.AddCommand(a.projectsCommand())
+	cmd.AddCommand(a.usersCommand())
 	cmd.AddCommand(a.issuesCommand())
 	cmd.AddCommand(a.commentsCommand())
+	cmd.AddCommand(a.commandsCommand())
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
 	return cmd
@@ -154,6 +157,68 @@ func (a *app) meCommand() *cobra.Command {
 			return output.Write(a.out, a.format, user)
 		},
 	}
+}
+
+func (a *app) projectsCommand() *cobra.Command {
+	var top int
+	var skip int
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List projects",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			projects, err := client.Projects(cmd.Context(), youtrack.PageOptions{Top: top, Skip: skip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, projects)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum projects to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of projects to skip")
+
+	cmd := &cobra.Command{
+		Use:     "projects",
+		Aliases: []string{"project"},
+		Short:   "Work with projects",
+	}
+	cmd.AddCommand(list)
+	return cmd
+}
+
+func (a *app) usersCommand() *cobra.Command {
+	var top int
+	var skip int
+
+	list := &cobra.Command{
+		Use:   "list",
+		Short: "List users",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			users, err := client.Users(cmd.Context(), youtrack.PageOptions{Top: top, Skip: skip})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, users)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum users to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of users to skip")
+
+	cmd := &cobra.Command{
+		Use:     "users",
+		Aliases: []string{"user"},
+		Short:   "Work with users",
+	}
+	cmd.AddCommand(list)
+	return cmd
 }
 
 func (a *app) issuesCommand() *cobra.Command {
@@ -284,6 +349,48 @@ func (a *app) commentsCommand() *cobra.Command {
 		Short:   "Work with issue comments",
 	}
 	cmd.AddCommand(list, add)
+	return cmd
+}
+
+func (a *app) commandsCommand() *cobra.Command {
+	var query string
+	var comment string
+	var silent bool
+
+	apply := &cobra.Command{
+		Use:   "apply ISSUE",
+		Short: "Apply a YouTrack command to an issue",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if query == "" {
+				return errors.New("--query is required")
+			}
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			result, err := client.ApplyCommand(cmd.Context(), youtrack.ApplyCommandRequest{
+				IssueID: args[0],
+				Query:   query,
+				Comment: comment,
+				Silent:  silent,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, result)
+		},
+	}
+	apply.Flags().StringVarP(&query, "query", "q", "", "YouTrack command query, for example 'State Fixed' or 'for me'")
+	apply.Flags().StringVarP(&comment, "comment", "c", "", "optional command comment")
+	apply.Flags().BoolVar(&silent, "silent", false, "apply without notifications when YouTrack permits it")
+
+	cmd := &cobra.Command{
+		Use:     "commands",
+		Aliases: []string{"command", "cmd"},
+		Short:   "Apply YouTrack commands",
+	}
+	cmd.AddCommand(apply)
 	return cmd
 }
 

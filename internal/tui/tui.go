@@ -2,6 +2,7 @@ package tui
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"strings"
@@ -147,8 +148,14 @@ func (m model) issueDetail(width, height int) string {
 		issue.Summary,
 		"",
 		"Project: " + issue.Project.ShortName,
+		"Resolved: " + resolvedText(issue.Resolved),
 		"",
 		trimBlank(issue.Description),
+	}
+	fields := issueFields(issue)
+	if len(fields) > 0 {
+		lines = append(lines, "", titleStyle.Render("Fields"))
+		lines = append(lines, fields...)
 	}
 	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
 }
@@ -186,6 +193,89 @@ func trimBlank(value string) string {
 		return "No description"
 	}
 	return value
+}
+
+func resolvedText(value any) string {
+	if value == nil {
+		return "no"
+	}
+	return "yes"
+}
+
+func issueFields(issue youtrack.Issue) []string {
+	if len(issue.Custom) == 0 {
+		return nil
+	}
+	var fields []struct {
+		Name  string          `json:"name"`
+		Value json.RawMessage `json:"value"`
+	}
+	if err := json.Unmarshal(issue.Custom, &fields); err != nil {
+		return nil
+	}
+
+	lines := make([]string, 0, len(fields))
+	for _, field := range fields {
+		value := fieldValue(field.Value)
+		if value == "" {
+			continue
+		}
+		lines = append(lines, field.Name+": "+value)
+	}
+	return lines
+}
+
+func fieldValue(data json.RawMessage) string {
+	if len(data) == 0 || string(data) == "null" {
+		return ""
+	}
+
+	var text string
+	if err := json.Unmarshal(data, &text); err == nil {
+		return text
+	}
+
+	var object struct {
+		Presentation string `json:"presentation"`
+		Name         string `json:"name"`
+		Login        string `json:"login"`
+		Text         string `json:"text"`
+	}
+	if err := json.Unmarshal(data, &object); err == nil {
+		return firstNonEmpty(object.Presentation, object.Name, object.Login, object.Text)
+	}
+
+	var objects []struct {
+		Presentation string `json:"presentation"`
+		Name         string `json:"name"`
+		Login        string `json:"login"`
+		Text         string `json:"text"`
+	}
+	if err := json.Unmarshal(data, &objects); err == nil {
+		values := make([]string, 0, len(objects))
+		for _, object := range objects {
+			value := firstNonEmpty(object.Presentation, object.Name, object.Login, object.Text)
+			if value != "" {
+				values = append(values, value)
+			}
+		}
+		return strings.Join(values, ", ")
+	}
+
+	var primitive any
+	if err := json.Unmarshal(data, &primitive); err == nil {
+		return fmt.Sprint(primitive)
+	}
+	return ""
+}
+
+func firstNonEmpty(values ...string) string {
+	for _, value := range values {
+		if value != "" {
+			return value
+		}
+	}
+	return ""
 }
 
 var (

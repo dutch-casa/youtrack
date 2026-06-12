@@ -29,15 +29,20 @@ If a command needs credentials and stdin is a terminal, `yt` prompts and saves t
 
 ```sh
 yt me
+yt projects list
+yt users list
 yt issues list --query 'project: ABC #Unresolved' --top 20
 yt issues show ABC-123
 yt issues create --project ABC --summary 'Fix login redirect' --description 'Observed in staging'
 yt comments list ABC-123
 yt comments add ABC-123 --text 'I can reproduce this.'
+yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'
 yt raw /api/admin/projects
 ```
 
 JSON is the default. Use `--format table` for human-readable output.
+
+`yt commands apply` is the high-leverage bridge to YouTrack's own command language. Use it for issue operations that humans normally perform through command input in the UI, including assignment, state changes, tags, links, watchers, and similar workflow actions, subject to the token's permissions.
 
 ## Interactive Mode
 

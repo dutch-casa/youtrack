@@ -44,11 +44,31 @@ func writeTable(w io.Writer, value any) error {
 		for _, comment := range rows {
 			fmt.Fprintf(tw, "%s\t%s\n", comment.Author.Login, comment.Text)
 		}
+	case []youtrack.Project:
+		fmt.Fprintln(tw, "SHORT\tNAME\tLEADER\tARCHIVED")
+		for _, project := range rows {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%t\n", project.ShortName, project.Name, project.Leader.Login, project.Archived)
+		}
+	case []youtrack.User:
+		fmt.Fprintln(tw, "LOGIN\tNAME\tEMAIL\tBANNED")
+		for _, user := range rows {
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%t\n", user.Login, displayName(user), user.Email, user.Banned)
+		}
+	case youtrack.CommandResult:
+		fmt.Fprintln(tw, "QUERY\tISSUES")
+		fmt.Fprintf(tw, "%s\t%d\n", rows.Query, len(rows.Issues))
 	case youtrack.User:
 		fmt.Fprintln(tw, "LOGIN\tNAME\tEMAIL")
-		fmt.Fprintf(tw, "%s\t%s\t%s\n", rows.Login, rows.Name, rows.Email)
+		fmt.Fprintf(tw, "%s\t%s\t%s\n", rows.Login, displayName(rows), rows.Email)
 	default:
 		return Write(w, JSON, value)
 	}
 	return tw.Flush()
+}
+
+func displayName(user youtrack.User) string {
+	if user.FullName != "" {
+		return user.FullName
+	}
+	return user.Name
 }

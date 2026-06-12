@@ -65,3 +65,22 @@ func TestModelErrorView(t *testing.T) {
 		t.Fatalf("View() = %q, want error", view)
 	}
 }
+
+func TestIssueDetailRendersCustomFields(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{
+		IDReadable: "ABC-1",
+		Summary:    "One",
+		Project:    youtrack.Project{ShortName: "ABC"},
+		Custom:     []byte(`[{"name":"State","value":{"name":"Open"}},{"name":"Assignee","value":{"login":"jane"}}]`),
+	}}})
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "State: Open") {
+		t.Fatalf("View() = %q, want state field", view)
+	}
+	if !strings.Contains(view, "Assignee: jane") {
+		t.Fatalf("View() = %q, want assignee field", view)
+	}
+}

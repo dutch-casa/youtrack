@@ -31,15 +31,21 @@ func NewClient(baseURL, token string, httpClient *http.Client) *Client {
 }
 
 type User struct {
-	ID    string `json:"id"`
-	Login string `json:"login"`
-	Name  string `json:"name"`
-	Email string `json:"email,omitempty"`
+	ID       string `json:"id"`
+	Login    string `json:"login"`
+	Name     string `json:"name"`
+	FullName string `json:"fullName,omitempty"`
+	Email    string `json:"email,omitempty"`
+	Online   bool   `json:"online,omitempty"`
+	Banned   bool   `json:"banned,omitempty"`
 }
 
 type Project struct {
+	ID        string `json:"id,omitempty"`
 	ShortName string `json:"shortName"`
 	Name      string `json:"name,omitempty"`
+	Archived  bool   `json:"archived,omitempty"`
+	Leader    User   `json:"leader,omitempty"`
 }
 
 type Issue struct {
@@ -72,6 +78,23 @@ type CreateIssueRequest struct {
 	Description      string
 }
 
+type PageOptions struct {
+	Top  int
+	Skip int
+}
+
+type ApplyCommandRequest struct {
+	IssueID string
+	Query   string
+	Comment string
+	Silent  bool
+}
+
+type CommandResult struct {
+	Query  string  `json:"query"`
+	Issues []Issue `json:"issues"`
+}
+
 type APIError struct {
 	StatusCode int
 	Message    string
@@ -87,9 +110,27 @@ func (e *APIError) Error() string {
 func (c *Client) CurrentUser(ctx context.Context) (User, error) {
 	var user User
 	err := c.get(ctx, "/api/users/me", url.Values{
-		"fields": {"id,login,name,email"},
+		"fields": {userFields},
 	}, &user)
 	return user, err
+}
+
+func (c *Client) Projects(ctx context.Context, opts PageOptions) ([]Project, error) {
+	values := pageValues(opts)
+	values.Set("fields", projectFields)
+
+	var projects []Project
+	err := c.get(ctx, "/api/admin/projects", values, &projects)
+	return projects, err
+}
+
+func (c *Client) Users(ctx context.Context, opts PageOptions) ([]User, error) {
+	values := pageValues(opts)
+	values.Set("fields", userFields)
+
+	var users []User
+	err := c.get(ctx, "/api/users", values, &users)
+	return users, err
 }
 
 func (c *Client) Issues(ctx context.Context, opts IssueListOptions) ([]Issue, error) {
@@ -167,6 +208,30 @@ func (c *Client) AddComment(ctx context.Context, issueID, text string) (Comment,
 		"fields": {"id,text,author(id,login,name),created,updated"},
 	}, map[string]string{"text": text}, &comment)
 	return comment, err
+}
+
+func (c *Client) ApplyCommand(ctx context.Context, req ApplyCommandRequest) (CommandResult, error) {
+	if strings.TrimSpace(req.IssueID) == "" {
+		return CommandResult{}, errors.New("issue id is required")
+	}
+	if strings.TrimSpace(req.Query) == "" {
+		return CommandResult{}, errors.New("command query is required")
+	}
+
+	body := map[string]any{
+		"query":  req.Query,
+		"issues": []map[string]string{{"idReadable": req.IssueID}},
+		"silent": req.Silent,
+	}
+	if req.Comment != "" {
+		body["comment"] = req.Comment
+	}
+
+	var result CommandResult
+	err := c.post(ctx, "/api/commands", url.Values{
+		"fields": {"query,issues(id,idReadable,summary)"},
+	}, body, &result)
+	return result, err
 }
 
 func (c *Client) Raw(ctx context.Context, method, path string, body io.Reader) (json.RawMessage, error) {
@@ -280,3 +345,16 @@ func decodeAPIError(status int, data []byte) error {
 }
 
 const issueFields = "id,idReadable,summary,description,resolved,project(shortName,name),customFields(name,value(name,login,presentation,text,isResolved))"
+const projectFields = "id,shortName,name,archived,leader(id,login,name,fullName,email)"
+const userFields = "id,login,name,fullName,email,online,banned"
+
+func pageValues(opts PageOptions) url.Values {
+	values := url.Values{}
+	if opts.Top > 0 {
+		values.Set("$top", fmt.Sprint(opts.Top))
+	}
+	if opts.Skip > 0 {
+		values.Set("$skip", fmt.Sprint(opts.Skip))
+	}
+	return values
+}

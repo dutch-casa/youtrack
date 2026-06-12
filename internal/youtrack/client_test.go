@@ -3,6 +3,7 @@ package youtrack
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
@@ -68,6 +69,90 @@ func TestCreateIssueRequestBody(t *testing.T) {
 	}
 }
 
+func TestProjectsRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/admin/projects" {
+			t.Fatalf("path = %s, want /api/admin/projects", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$top"); got != "42" {
+			t.Fatalf("$top = %q", got)
+		}
+		_, _ = w.Write([]byte(`[{"id":"0-1","shortName":"ABC","name":"Alpha"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	projects, err := client.Projects(context.Background(), PageOptions{Top: 42})
+	if err != nil {
+		t.Fatalf("Projects() error = %v", err)
+	}
+	if len(projects) != 1 || projects[0].ShortName != "ABC" {
+		t.Fatalf("Projects() = %#v", projects)
+	}
+}
+
+func TestUsersRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/users" {
+			t.Fatalf("path = %s, want /api/users", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`[{"id":"1-1","login":"jane","name":"Jane"}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	users, err := client.Users(context.Background(), PageOptions{})
+	if err != nil {
+		t.Fatalf("Users() error = %v", err)
+	}
+	if len(users) != 1 || users[0].Login != "jane" {
+		t.Fatalf("Users() = %#v", users)
+	}
+}
+
+func TestApplyCommandRequestBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/commands" {
+			t.Fatalf("path = %s, want /api/commands", r.URL.Path)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		var payload map[string]any
+		if err := json.Unmarshal(body, &payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		if payload["query"] != "State Fixed" {
+			t.Fatalf("query = %v", payload["query"])
+		}
+		issues := payload["issues"].([]any)
+		issue := issues[0].(map[string]any)
+		if issue["idReadable"] != "ABC-1" {
+			t.Fatalf("issue idReadable = %v", issue["idReadable"])
+		}
+		if payload["comment"] != "done" {
+			t.Fatalf("comment = %v", payload["comment"])
+		}
+		_, _ = w.Write([]byte(`{"query":"State Fixed","issues":[{"id":"1","idReadable":"ABC-1","summary":"Done"}]}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	result, err := client.ApplyCommand(context.Background(), ApplyCommandRequest{
+		IssueID: "ABC-1",
+		Query:   "State Fixed",
+		Comment: "done",
+		Silent:  true,
+	})
+	if err != nil {
+		t.Fatalf("ApplyCommand() error = %v", err)
+	}
+	if result.Query != "State Fixed" || len(result.Issues) != 1 {
+		t.Fatalf("ApplyCommand() = %#v", result)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -99,5 +184,8 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.AddComment(context.Background(), "ABC-1", ""); err == nil {
 		t.Fatal("AddComment() error = nil, want text validation")
+	}
+	if _, err := client.ApplyCommand(context.Background(), ApplyCommandRequest{IssueID: "ABC-1"}); err == nil {
+		t.Fatal("ApplyCommand() error = nil, want query validation")
 	}
 }
