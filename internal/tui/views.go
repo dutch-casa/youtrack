@@ -437,8 +437,12 @@ func (m model) footer() string {
 }
 
 func (m model) keyMap() tuiKeyMap {
-	if m.section != sectionIssues {
+	switch m.section {
+	case sectionIssues:
+		return issueKeyMap()
+	case sectionHelpdesk:
+		return helpdeskKeyMap()
+	default:
 		return resourceKeyMap()
 	}
-	return issueKeyMap()
 }

@@ -50,6 +50,12 @@ func resourceKeyMap() tuiKeyMap {
 	}
 }
 
+func helpdeskKeyMap() tuiKeyMap {
+	keys := resourceKeyMap()
+	keys.Action = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "tickets"))
+	return keys
+}
+
 func (k tuiKeyMap) ShortHelp() []key.Binding {
 	return []key.Binding{k.Sections, k.Move, k.Search, k.Project, k.Issue, k.Browser, k.Action, k.Comment, k.Work, k.Pages, k.Panes, k.Scroll, k.Refresh, k.Quit}
 }

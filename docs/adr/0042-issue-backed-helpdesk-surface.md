@@ -17,6 +17,8 @@ Keep the typed `yt helpdesk` surface issue-backed:
 - `yt helpdesk projects` lists projects and filters project type `helpdesk`.
 - `yt helpdesk tickets PROJECT` lists issues with `project: PROJECT` plus the caller's additional query.
 
+The TUI follows the same contract. The Help Desk section lists Helpdesk projects; pressing `enter` on a project opens the regular issue browser with that project filter applied. Ticket details, comments, commands, work items, attachments, and browser opening then reuse the issue panes instead of introducing a parallel Helpdesk ticket model.
+
 Document that this is a convenience over public project/issue resources, not a complete Helpdesk-specific API model.
 
 For Helpdesk-specific or self-hosted app endpoints, agents should use `yt raw` until a stable public endpoint and common workflow justify a typed command.
@@ -24,6 +26,8 @@ For Helpdesk-specific or self-hosted app endpoints, agents should use `yt raw` u
 ## Consequences
 
 The command remains useful for common support-agent browsing and filtering.
+
+The interactive UI gains ticket browsing without duplicating issue-detail behavior or implying support for Helpdesk-only channel workflows.
 
 Agents do not infer unsupported ticket-channel creation or Helpdesk-only workflow semantics from the typed command name.
 

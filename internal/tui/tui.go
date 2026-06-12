@@ -376,6 +376,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.section == sectionIssues && !m.loading {
 				return m, m.openIssuePrompt()
 			}
+		case "enter":
+			if m.section == sectionHelpdesk && !m.resourcesLoading {
+				return m.openSelectedHelpdeskTickets()
+			}
 		case "tab":
 			if m.section != sectionIssues {
 				return m, nil
@@ -795,6 +799,24 @@ func (m model) updateIssueInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	var cmd tea.Cmd
 	m.issueInput, cmd = m.issueInput.Update(msg)
 	return m, cmd
+}
+
+func (m model) openSelectedHelpdeskTickets() (tea.Model, tea.Cmd) {
+	resource, ok := m.currentResource()
+	if !ok {
+		return m, nil
+	}
+	project := strings.TrimSpace(firstNonEmpty(resource.ID, resource.Title))
+	if project == "" {
+		return m, nil
+	}
+	m.projectFilter = project
+	m.opts.Skip = 0
+	m.selected = 0
+	m.pane = detailsPane
+	m.clearActionErrors()
+	m.clearPrompts()
+	return m.withIssueListLoading("Loading help desk tickets for " + project + "...")
 }
 
 func (m model) loadIssues() tea.Msg {

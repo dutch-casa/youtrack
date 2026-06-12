@@ -264,6 +264,36 @@ func TestIssuePromptJumpsToIssue(t *testing.T) {
 	}
 }
 
+func TestHelpdeskProjectOpensIssueBackedTickets(t *testing.T) {
+	var requests []youtrack.IssueListOptions
+	m := newModel(context.Background(), fakeClient{issueRequests: &requests}, Options{Query: "#Unresolved", Top: 25})
+	m.section = sectionHelpdesk
+	m.resources = []resourceItem{
+		{ID: "OPS", Title: "Operations"},
+		{ID: "SUP", Title: "Support"},
+	}
+	m.resourceSelected = 1
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("helpdesk ticket command = nil")
+	}
+	if m.section != sectionIssues {
+		t.Fatalf("section = %v, want sectionIssues", m.section)
+	}
+	if m.projectFilter != "SUP" {
+		t.Fatalf("projectFilter = %q, want SUP", m.projectFilter)
+	}
+	_ = cmd()
+	if len(requests) != 1 {
+		t.Fatalf("issue requests = %#v, want one request", requests)
+	}
+	if requests[0].Query != "project: SUP #Unresolved" {
+		t.Fatalf("query = %q, want helpdesk project filter composed with query", requests[0].Query)
+	}
+}
+
 func TestProjectSelectorLoadsAndAppliesProject(t *testing.T) {
 	var requests []youtrack.IssueListOptions
 	client := fakeClient{
@@ -509,6 +539,16 @@ func TestFooterUsesBubblesHelp(t *testing.T) {
 		if !strings.Contains(footer, want) {
 			t.Fatalf("footer = %q, want %q", footer, want)
 		}
+	}
+}
+
+func TestHelpdeskFooterShowsTicketAction(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionHelpdesk
+
+	footer := stripANSI(m.footer())
+	if !strings.Contains(footer, "enter tickets") {
+		t.Fatalf("footer = %q, want enter tickets action", footer)
 	}
 }
 
