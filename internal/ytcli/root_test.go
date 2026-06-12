@@ -3,6 +3,8 @@ package ytcli
 import (
 	"bytes"
 	"context"
+	"net/http"
+	"net/http/httptest"
 	"path/filepath"
 	"strings"
 	"testing"
@@ -76,5 +78,29 @@ func TestIssuesUpdateRequiresChangedField(t *testing.T) {
 	}
 	if !strings.Contains(err.Error(), "--summary") {
 		t.Fatalf("Execute() error = %q, want field guidance", err.Error())
+	}
+}
+
+func TestCommentAddReadsTextFromStdin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/comments" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		_, _ = w.Write([]byte(`{"id":"c-1","text":"from stdin","author":{"login":"jane"},"created":1}`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"comments", "add", "ABC-1", "--text-stdin",
+	}, strings.NewReader("from stdin"), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "from stdin") {
+		t.Fatalf("output = %q, want stdin comment", out.String())
 	}
 }

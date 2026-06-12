@@ -7,6 +7,7 @@ See also:
 - [0003 Permanent-Token Authentication](adr/0003-permanent-token-auth.md)
 - [0004 Charm TUI as Optional Human Mode](adr/0004-charm-tui-as-optional-human-mode.md)
 - [0005 Command API as Workflow Bridge](adr/0005-command-api-as-workflow-bridge.md)
+- [0006 Centralized Text Input](adr/0006-centralized-text-input.md)
 
 ## `internal/auth`
 
@@ -25,6 +26,12 @@ Role: Callers use typed operations for common issue, comment, and user actions. 
 Secret: This module hides the command-line contract users and agents call.
 
 Role: It wires flags, subcommands, output defaults, and authentication into a stable CLI surface. JSON is the default because the primary caller is an agent.
+
+## `internal/textinput`
+
+Secret: This module hides how command text is resolved from literal flags, files, and stdin.
+
+Role: Commands ask it to resolve one named text value. It enforces mutual exclusion across text sources and preserves the distinction between omitted text and an explicitly empty literal.
 
 ## `internal/tui`
 

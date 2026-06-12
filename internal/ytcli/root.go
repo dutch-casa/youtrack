@@ -10,6 +10,7 @@ import (
 
 	"github.com/dutchcaz/youtrack/internal/auth"
 	"github.com/dutchcaz/youtrack/internal/output"
+	"github.com/dutchcaz/youtrack/internal/textinput"
 	"github.com/dutchcaz/youtrack/internal/tui"
 	"github.com/dutchcaz/youtrack/internal/youtrack"
 	"github.com/spf13/cobra"
@@ -265,6 +266,8 @@ func (a *app) issuesCommand() *cobra.Command {
 	var project string
 	var summary string
 	var description string
+	var descriptionFile string
+	var descriptionStdin bool
 	create := &cobra.Command{
 		Use:   "create",
 		Short: "Create an issue",
@@ -275,6 +278,16 @@ func (a *app) issuesCommand() *cobra.Command {
 			if summary == "" {
 				return errors.New("--summary is required")
 			}
+			resolvedDescription, _, err := textinput.Resolve(textinput.Source{
+				Name:       "description",
+				Literal:    description,
+				LiteralSet: cmd.Flags().Changed("description"),
+				File:       descriptionFile,
+				Stdin:      descriptionStdin,
+			}, a.in)
+			if err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -282,7 +295,7 @@ func (a *app) issuesCommand() *cobra.Command {
 			issue, err := client.CreateIssue(cmd.Context(), youtrack.CreateIssueRequest{
 				ProjectShortName: project,
 				Summary:          summary,
-				Description:      description,
+				Description:      resolvedDescription,
 			})
 			if err != nil {
 				return err
@@ -293,16 +306,29 @@ func (a *app) issuesCommand() *cobra.Command {
 	create.Flags().StringVarP(&project, "project", "p", "", "project short name")
 	create.Flags().StringVarP(&summary, "summary", "s", "", "issue summary")
 	create.Flags().StringVarP(&description, "description", "d", "", "issue description")
+	create.Flags().StringVar(&descriptionFile, "description-file", "", "read issue description from file")
+	create.Flags().BoolVar(&descriptionStdin, "description-stdin", false, "read issue description from stdin")
 
 	var updateSummary string
 	var updateDescription string
+	var updateDescriptionFile string
+	var updateDescriptionStdin bool
 	update := &cobra.Command{
 		Use:   "update ISSUE",
 		Short: "Update issue summary or description",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			summaryChanged := cmd.Flags().Changed("summary")
-			descriptionChanged := cmd.Flags().Changed("description")
+			resolvedDescription, descriptionChanged, err := textinput.Resolve(textinput.Source{
+				Name:       "description",
+				Literal:    updateDescription,
+				LiteralSet: cmd.Flags().Changed("description"),
+				File:       updateDescriptionFile,
+				Stdin:      updateDescriptionStdin,
+			}, a.in)
+			if err != nil {
+				return err
+			}
 			if !summaryChanged && !descriptionChanged {
 				return errors.New("at least one of --summary or --description is required")
 			}
@@ -313,7 +339,7 @@ func (a *app) issuesCommand() *cobra.Command {
 			}
 			var descriptionValue *string
 			if descriptionChanged {
-				descriptionValue = &updateDescription
+				descriptionValue = &resolvedDescription
 			}
 
 			client, err := a.client()
@@ -333,6 +359,8 @@ func (a *app) issuesCommand() *cobra.Command {
 	}
 	update.Flags().StringVarP(&updateSummary, "summary", "s", "", "new issue summary")
 	update.Flags().StringVarP(&updateDescription, "description", "d", "", "new issue description")
+	update.Flags().StringVar(&updateDescriptionFile, "description-file", "", "read new issue description from file")
+	update.Flags().BoolVar(&updateDescriptionStdin, "description-stdin", false, "read new issue description from stdin")
 
 	cmd := &cobra.Command{
 		Use:     "issues",
@@ -362,19 +390,31 @@ func (a *app) commentsCommand() *cobra.Command {
 	}
 
 	var text string
+	var textFile string
+	var textStdin bool
 	add := &cobra.Command{
 		Use:   "add ISSUE",
 		Short: "Add an issue comment",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if text == "" {
+			resolvedText, hasText, err := textinput.Resolve(textinput.Source{
+				Name:       "comment",
+				Literal:    text,
+				LiteralSet: cmd.Flags().Changed("text"),
+				File:       textFile,
+				Stdin:      textStdin,
+			}, a.in)
+			if err != nil {
+				return err
+			}
+			if !hasText {
 				return errors.New("--text is required")
 			}
 			client, err := a.client()
 			if err != nil {
 				return err
 			}
-			comment, err := client.AddComment(cmd.Context(), args[0], text)
+			comment, err := client.AddComment(cmd.Context(), args[0], resolvedText)
 			if err != nil {
 				return err
 			}
@@ -382,6 +422,8 @@ func (a *app) commentsCommand() *cobra.Command {
 		},
 	}
 	add.Flags().StringVarP(&text, "text", "t", "", "comment text")
+	add.Flags().StringVar(&textFile, "text-file", "", "read comment text from file")
+	add.Flags().BoolVar(&textStdin, "text-stdin", false, "read comment text from stdin")
 
 	cmd := &cobra.Command{
 		Use:     "comments",
@@ -395,6 +437,8 @@ func (a *app) commentsCommand() *cobra.Command {
 func (a *app) commandsCommand() *cobra.Command {
 	var query string
 	var comment string
+	var commentFile string
+	var commentStdin bool
 	var silent bool
 
 	apply := &cobra.Command{
@@ -405,6 +449,16 @@ func (a *app) commandsCommand() *cobra.Command {
 			if query == "" {
 				return errors.New("--query is required")
 			}
+			resolvedComment, _, err := textinput.Resolve(textinput.Source{
+				Name:       "comment",
+				Literal:    comment,
+				LiteralSet: cmd.Flags().Changed("comment"),
+				File:       commentFile,
+				Stdin:      commentStdin,
+			}, a.in)
+			if err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -412,7 +466,7 @@ func (a *app) commandsCommand() *cobra.Command {
 			result, err := client.ApplyCommand(cmd.Context(), youtrack.ApplyCommandRequest{
 				IssueID: args[0],
 				Query:   query,
-				Comment: comment,
+				Comment: resolvedComment,
 				Silent:  silent,
 			})
 			if err != nil {
@@ -423,6 +477,8 @@ func (a *app) commandsCommand() *cobra.Command {
 	}
 	apply.Flags().StringVarP(&query, "query", "q", "", "YouTrack command query, for example 'State Fixed' or 'for me'")
 	apply.Flags().StringVarP(&comment, "comment", "c", "", "optional command comment")
+	apply.Flags().StringVar(&commentFile, "comment-file", "", "read command comment from file")
+	apply.Flags().BoolVar(&commentStdin, "comment-stdin", false, "read command comment from stdin")
 	apply.Flags().BoolVar(&silent, "silent", false, "apply without notifications when YouTrack permits it")
 
 	cmd := &cobra.Command{
