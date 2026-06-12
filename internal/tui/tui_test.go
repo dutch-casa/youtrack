@@ -404,13 +404,10 @@ func TestIssuePagingUsesSkip(t *testing.T) {
 		issues:        []youtrack.Issue{{IDReadable: "ABC-11", Summary: "Eleven"}},
 		issueRequests: &issueRequests,
 	}, Options{Query: "project: ABC", Top: 10})
-	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{
-		{IDReadable: "ABC-1", Summary: "One"},
-		{IDReadable: "ABC-2", Summary: "Two"},
-	}})
+	updated, _ := m.Update(issuesMsg{issues: numberedIssues(10)})
 	m = updated.(model)
-	m.selected = 1
-	m.comments["ABC-2"] = []youtrack.Comment{{ID: "c-1", Text: "stale"}}
+	m.selected = 9
+	m.comments["ABC-10"] = []youtrack.Comment{{ID: "c-1", Text: "stale"}}
 
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
 	m = updated.(model)
@@ -451,6 +448,25 @@ func TestIssuePagingUsesSkip(t *testing.T) {
 	_ = cmd()
 	if len(issueRequests) != 2 || issueRequests[1].Skip != 0 {
 		t.Fatalf("issue requests = %#v, want previous page request", issueRequests)
+	}
+}
+
+func TestIssuePagingDoesNotAdvancePastPartialPage(t *testing.T) {
+	var issueRequests []youtrack.IssueListOptions
+	m := newModel(context.Background(), fakeClient{issueRequests: &issueRequests}, Options{Query: "project: ABC", Top: 10, Skip: 20})
+	updated, _ := m.Update(issuesMsg{issues: numberedIssues(3)})
+	m = updated.(model)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("next page command != nil on partial page")
+	}
+	if m.opts.Skip != 20 {
+		t.Fatalf("skip = %d, want unchanged skip", m.opts.Skip)
+	}
+	if len(issueRequests) != 0 {
+		t.Fatalf("issue requests = %#v, want no request", issueRequests)
 	}
 }
 
@@ -509,15 +525,8 @@ func TestDetailPaneScrollsAndResetsOnSelectionChange(t *testing.T) {
 }
 
 func TestIssueListFollowsSelection(t *testing.T) {
-	issues := make([]youtrack.Issue, 20)
-	for i := range issues {
-		issues[i] = youtrack.Issue{
-			IDReadable: "ABC-" + strconv.Itoa(i+1),
-			Summary:    "Issue " + strconv.Itoa(i+1),
-		}
-	}
 	m := newModel(context.Background(), fakeClient{}, Options{})
-	updated, _ := m.Update(issuesMsg{issues: issues})
+	updated, _ := m.Update(issuesMsg{issues: numberedIssues(20)})
 	m = updated.(model)
 	m.selected = 15
 
@@ -530,6 +539,13 @@ func TestIssueListFollowsSelection(t *testing.T) {
 	}
 	if !strings.Contains(view, "16/20") {
 		t.Fatalf("issueList() = %q, want position title", view)
+	}
+}
+
+func TestIssuePageNumber(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{Top: 25, Skip: 50})
+	if page := m.issuePageNumber(); page != 3 {
+		t.Fatalf("issuePageNumber() = %d, want 3", page)
 	}
 }
 
@@ -548,6 +564,17 @@ func TestVisibleIssueRangeCentersSelectionWithinBounds(t *testing.T) {
 	if start != 0 || end != 2 {
 		t.Fatalf("visibleIssueRange(-4, 2, 8) = %d, %d; want 0, 2", start, end)
 	}
+}
+
+func numberedIssues(total int) []youtrack.Issue {
+	issues := make([]youtrack.Issue, total)
+	for i := range issues {
+		issues[i] = youtrack.Issue{
+			IDReadable: "ABC-" + strconv.Itoa(i+1),
+			Summary:    "Issue " + strconv.Itoa(i+1),
+		}
+	}
+	return issues
 }
 
 func TestModelErrorView(t *testing.T) {

@@ -220,7 +220,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m.withSelectedPaneLoading()
 			}
 		case "n":
-			if !m.loading && len(m.issues) > 0 {
+			if !m.loading && m.canLoadNextIssuePage() {
 				m.opts.Skip += m.opts.Top
 				m.selected = 0
 				return m.withIssueListLoading("Loading next page...")
@@ -405,6 +405,10 @@ func (m model) withIssueListLoading(status string) (tea.Model, tea.Cmd) {
 	m.clearPaneCaches()
 	m.status = status
 	return m, m.loadIssues
+}
+
+func (m model) canLoadNextIssuePage() bool {
+	return m.opts.Top > 0 && len(m.issues) == m.opts.Top
 }
 
 func (m *model) clearPaneCaches() {

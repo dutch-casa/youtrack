@@ -38,8 +38,8 @@ func (m model) issueList(width, height int) string {
 		position = min(max(m.selected, 0), len(m.issues)-1) + 1
 	}
 	titleText := fmt.Sprintf("Issues %d/%d", position, len(m.issues))
-	if m.opts.Skip > 0 {
-		titleText = fmt.Sprintf("Issues %d/%d skip %d", position, len(m.issues), m.opts.Skip)
+	if page := m.issuePageNumber(); page > 1 {
+		titleText = fmt.Sprintf("Issues %d/%d page %d", position, len(m.issues), page)
 	}
 	title := titleStyle.Render(titleText)
 	rows = append(rows, title)
@@ -53,6 +53,13 @@ func (m model) issueList(width, height int) string {
 		rows = append(rows, line)
 	}
 	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
+}
+
+func (m model) issuePageNumber() int {
+	if m.opts.Top <= 0 {
+		return 1
+	}
+	return m.opts.Skip/m.opts.Top + 1
 }
 
 func visibleIssueRange(selected, total, height int) (int, int) {

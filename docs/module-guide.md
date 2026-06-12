@@ -23,6 +23,7 @@ See also:
 - [0019 TUI Query Refinement](adr/0019-tui-query-refinement.md)
 - [0020 TUI Input Mode State](adr/0020-tui-input-mode-state.md)
 - [0021 TUI Issue Pagination](adr/0021-tui-issue-pagination.md)
+- [0022 TUI Page Bounds](adr/0022-tui-page-bounds.md)
 
 ## `internal/auth`
 
