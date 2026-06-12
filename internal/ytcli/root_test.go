@@ -254,3 +254,81 @@ func TestLinksList(t *testing.T) {
 		t.Fatalf("output = %q, want linked issue and direction", out.String())
 	}
 }
+
+func TestRawReadsBodyFromFile(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues" {
+			t.Fatalf("path = %s", r.URL.Path)
+		}
+		if r.Method != http.MethodPost {
+			t.Fatalf("method = %s, want POST", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "application/json" {
+			t.Fatalf("Content-Type = %q, want application/json", got)
+		}
+		body := new(bytes.Buffer)
+		if _, err := body.ReadFrom(r.Body); err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if body.String() != `{"summary":"from file"}` {
+			t.Fatalf("body = %q", body.String())
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	path := filepath.Join(t.TempDir(), "body.json")
+	if err := os.WriteFile(path, []byte(`{"summary":"from file"}`), 0o600); err != nil {
+		t.Fatalf("write body file: %v", err)
+	}
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/issues", "--method", "POST", "--body-file", path,
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !strings.Contains(out.String(), `"ok":true`) {
+		t.Fatalf("output = %q, want raw response", out.String())
+	}
+}
+
+func TestRawReadsBodyFromStdin(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		body := new(bytes.Buffer)
+		if _, err := body.ReadFrom(r.Body); err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if body.String() != `{"summary":"from stdin"}` {
+			t.Fatalf("body = %q", body.String())
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/issues", "-X", "POST", "--body-stdin",
+	}, strings.NewReader(`{"summary":"from stdin"}`), &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestRawRejectsMultipleBodySources(t *testing.T) {
+	err := Execute(context.Background(), []string{
+		"raw", "/api/issues", "--body", `{}`, "--body-stdin",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want body source validation")
+	}
+	if !strings.Contains(err.Error(), "body accepts only one text source") {
+		t.Fatalf("Execute() error = %q, want body source validation", err.Error())
+	}
+}

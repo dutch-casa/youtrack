@@ -48,6 +48,7 @@ yt history list ABC-123 --category CommentsCategory --category CustomFieldCatego
 yt links list ABC-123
 yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'
 yt raw /api/admin/projects
+yt raw /api/issues --method POST --body-file ./issue.json
 ```
 
 JSON is the default. Use `--format table` for human-readable output.
@@ -55,6 +56,8 @@ JSON is the default. Use `--format table` for human-readable output.
 `yt commands apply` is the high-leverage bridge to YouTrack's own command language. Use it for issue operations that humans normally perform through command input in the UI, including assignment, state changes, tags, links, watchers, and similar workflow actions, subject to the token's permissions.
 
 For long generated text, description and comment commands accept explicit file/stdin sources such as `--description-file`, `--description-stdin`, `--text-file`, `--text-stdin`, `--comment-file`, and `--comment-stdin`.
+
+For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large JSON.
 
 ## Interactive Mode
 
