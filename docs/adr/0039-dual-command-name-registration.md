@@ -21,6 +21,8 @@ The alias is a symlink to the installed binary name. `yt upgrade` and `youtrack 
 
 Expose both names in `yt capabilities` through `commandNames`.
 
+The executable entrypoint passes the invoked file name into the CLI root command, so `youtrack --help` renders `Usage: youtrack [command]` while `yt --help` renders `Usage: yt [command]`.
+
 ## Consequences
 
 Agents and humans can choose either `yt` or `youtrack` without changing command semantics.
@@ -28,6 +30,8 @@ Agents and humans can choose either `yt` or `youtrack` without changing command 
 The install script remains simple: one build, one primary install target, one counterpart alias.
 
 Custom `--name` installs remain custom and do not invent extra aliases for arbitrary names.
+
+Help and usage output reflect the name the caller actually used, which makes copied snippets and terminal discovery less surprising.
 
 ## Rejected
 

@@ -28,12 +28,13 @@ const defaultInstallerURL = "https://raw.githubusercontent.com/dutch-casa/youtra
 var installerHTTPClient = &http.Client{Timeout: 30 * time.Second}
 
 type app struct {
-	in         io.Reader
-	out        io.Writer
-	errOut     io.Writer
-	store      auth.Store
-	configPath string
-	format     output.Format
+	in          io.Reader
+	out         io.Writer
+	errOut      io.Writer
+	store       auth.Store
+	configPath  string
+	format      output.Format
+	commandName string
 }
 
 var openBrowser = openURL
@@ -41,17 +42,26 @@ var runInstallScript = runInstallerScript
 var canPrompt = auth.CanPrompt
 
 func Execute(ctx context.Context, args []string, in io.Reader, out io.Writer, errOut io.Writer) error {
+	return ExecuteNamed(ctx, "yt", args, in, out, errOut)
+}
+
+func ExecuteNamed(ctx context.Context, commandName string, args []string, in io.Reader, out io.Writer, errOut io.Writer) error {
 	configPath, err := auth.DefaultPath()
 	if err != nil {
 		return err
 	}
+	commandName = strings.TrimSpace(commandName)
+	if commandName == "" {
+		commandName = "yt"
+	}
 	a := &app{
-		in:         in,
-		out:        out,
-		errOut:     errOut,
-		store:      auth.NewStore(configPath),
-		configPath: configPath,
-		format:     output.JSON,
+		in:          in,
+		out:         out,
+		errOut:      errOut,
+		store:       auth.NewStore(configPath),
+		configPath:  configPath,
+		format:      output.JSON,
+		commandName: commandName,
 	}
 
 	cmd := a.rootCommand(ctx)
@@ -64,7 +74,7 @@ func Execute(ctx context.Context, args []string, in io.Reader, out io.Writer, er
 
 func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd := &cobra.Command{
-		Use:           "yt",
+		Use:           a.commandName,
 		Short:         "Agent-friendly YouTrack CLI",
 		SilenceUsage:  true,
 		SilenceErrors: true,
@@ -1111,7 +1121,7 @@ func (a *app) upgradeCommand() *cobra.Command {
 
 	cmd := &cobra.Command{
 		Use:   "upgrade",
-		Short: "Update this yt binary with the public installer",
+		Short: "Update this CLI binary with the public installer",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if binDir == "" || name == "" {
 				executable, err := os.Executable()

@@ -34,6 +34,20 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	}
 }
 
+func TestHelpUsesInvokedCommandName(t *testing.T) {
+	var out bytes.Buffer
+	err := ExecuteNamed(context.Background(), "youtrack", []string{"--help"}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("ExecuteNamed() error = %v", err)
+	}
+	if !strings.Contains(out.String(), "Usage:\n  youtrack [command]") {
+		t.Fatalf("help output = %q, want youtrack usage", out.String())
+	}
+	if strings.Contains(out.String(), "Usage:\n  yt [command]") {
+		t.Fatalf("help output = %q, want invoked command name instead of yt", out.String())
+	}
+}
+
 func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "missing.json")
 	var out bytes.Buffer
