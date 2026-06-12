@@ -401,6 +401,46 @@ func TestRawSendsQueryParameters(t *testing.T) {
 	}
 }
 
+func TestRawWritesOutputFile(t *testing.T) {
+	want := []byte{0x00, 0x01, 0x02, 'Y', 'T', '\n'}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(want)
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	outputPath := filepath.Join(t.TempDir(), "raw.bin")
+	if err := os.WriteFile(outputPath, []byte("old"), 0o644); err != nil {
+		t.Fatalf("seed output file: %v", err)
+	}
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/download", "--output-file", outputPath,
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if out.Len() != 0 {
+		t.Fatalf("stdout = %q, want empty when output file is set", out.String())
+	}
+	got, err := os.ReadFile(outputPath)
+	if err != nil {
+		t.Fatalf("read output file: %v", err)
+	}
+	if !bytes.Equal(got, want) {
+		t.Fatalf("output file = %v, want exact raw bytes %v", got, want)
+	}
+	info, err := os.Stat(outputPath)
+	if err != nil {
+		t.Fatalf("stat output file: %v", err)
+	}
+	if got := info.Mode().Perm(); got != 0o600 {
+		t.Fatalf("output file mode = %v, want 0600", got)
+	}
+}
+
 func TestRawRejectsInvalidQueryBeforeAuth(t *testing.T) {
 	err := Execute(context.Background(), []string{
 		"--config", filepath.Join(t.TempDir(), "missing.json"),

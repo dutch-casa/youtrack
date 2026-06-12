@@ -31,6 +31,7 @@ See also:
 - [0027 TUI Quick Work Items](adr/0027-tui-quick-work-items.md)
 - [0028 TUI Prompt Lifecycle](adr/0028-tui-prompt-lifecycle.md)
 - [0029 Raw Query Parameters](adr/0029-raw-query-parameters.md)
+- [0030 Raw Response Files](adr/0030-raw-response-files.md)
 
 ## `internal/auth`
 

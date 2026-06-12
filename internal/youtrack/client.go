@@ -558,7 +558,7 @@ func (c *Client) ApplyCommand(ctx context.Context, req ApplyCommandRequest) (Com
 	return result, err
 }
 
-func (c *Client) Raw(ctx context.Context, raw RawRequest) (json.RawMessage, error) {
+func (c *Client) Raw(ctx context.Context, raw RawRequest) ([]byte, error) {
 	if strings.TrimSpace(raw.Method) == "" {
 		return nil, errors.New("raw request method is required")
 	}

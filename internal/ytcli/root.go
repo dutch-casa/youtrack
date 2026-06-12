@@ -765,6 +765,7 @@ func (a *app) rawCommand() *cobra.Command {
 	var bodyStdin bool
 	var headers []string
 	var query []string
+	var outputFile string
 	cmd := &cobra.Command{
 		Use:   "raw PATH",
 		Short: "Call a YouTrack REST path and print the raw response",
@@ -807,6 +808,9 @@ func (a *app) rawCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
+			if outputFile != "" {
+				return writeRawOutputFile(outputFile, data)
+			}
 			_, err = fmt.Fprintln(a.out, string(data))
 			return err
 		},
@@ -818,7 +822,15 @@ func (a *app) rawCommand() *cobra.Command {
 	cmd.Flags().BoolVar(&bodyStdin, "body-stdin", false, "read request body from stdin")
 	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "request header as 'Name: value'; repeat for multiple headers")
 	cmd.Flags().StringArrayVarP(&query, "query", "q", nil, "query parameter as name=value; repeat for multiple values")
+	cmd.Flags().StringVarP(&outputFile, "output-file", "o", "", "write raw response bytes to file")
 	return cmd
+}
+
+func writeRawOutputFile(path string, data []byte) error {
+	if err := os.WriteFile(path, data, 0o600); err != nil {
+		return err
+	}
+	return os.Chmod(path, 0o600)
 }
 
 func parseRawQuery(values []string) (url.Values, error) {
