@@ -41,6 +41,7 @@ See also:
 - [0037 Issue Evidence and Article Heading Panels](adr/0037-issue-evidence-and-article-heading-panels.md)
 - [0038 Agent Capability Map](adr/0038-agent-capability-map.md)
 - [0039 Dual Command Name Registration](adr/0039-dual-command-name-registration.md)
+- [0040 Repository Agent Working Contract](adr/0040-repository-agent-working-contract.md)
 
 ## `internal/auth`
 
