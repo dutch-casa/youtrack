@@ -53,6 +53,19 @@ func agileResources(agiles []youtrack.Agile) []resourceItem {
 	return resources
 }
 
+func sprintResources(sprints []youtrack.Sprint) []resourceItem {
+	resources := make([]resourceItem, 0, len(sprints))
+	for _, sprint := range sprints {
+		resources = append(resources, resourceItem{
+			ID:       sprint.ID,
+			Title:    firstNonEmpty(sprint.Name, sprint.ID),
+			Subtitle: sprintState(sprint),
+			Body:     sprintBody(sprint),
+		})
+	}
+	return resources
+}
+
 func agileBody(agile youtrack.Agile, projectNames []string) string {
 	lines := []string{
 		titleStyle.Render(firstNonEmpty(agile.Name, agile.ID)),
@@ -69,6 +82,28 @@ func agileBody(agile youtrack.Agile, projectNames []string) string {
 		lines = append(lines, sprintLine(agile.CurrentSprint))
 	}
 	return strings.Join(lines, "\n")
+}
+
+func sprintBody(sprint youtrack.Sprint) string {
+	lines := []string{
+		titleStyle.Render(firstNonEmpty(sprint.Name, sprint.ID)),
+		"ID: " + sprint.ID,
+	}
+	if state := sprintState(sprint); state != "" {
+		lines = append(lines, "State: "+state)
+	}
+	return strings.Join(lines, "\n")
+}
+
+func sprintState(sprint youtrack.Sprint) string {
+	parts := make([]string, 0, 2)
+	if sprint.Archived {
+		parts = append(parts, "archived")
+	}
+	if sprint.IsDefault {
+		parts = append(parts, "default")
+	}
+	return strings.Join(parts, "  ")
 }
 
 func projectResources(projects []youtrack.Project) []resourceItem {

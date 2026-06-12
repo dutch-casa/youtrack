@@ -105,7 +105,8 @@ func (m model) resourceList(width, height int) string {
 	if len(m.resources) > 0 {
 		position = min(max(m.resourceSelected, 0), len(m.resources)-1) + 1
 	}
-	rows = append(rows, titleStyle.Render(fmt.Sprintf("%s %d/%d", m.section.title(), position, len(m.resources))))
+	title := firstNonEmpty(m.resourceTitle, m.section.title())
+	rows = append(rows, titleStyle.Render(fmt.Sprintf("%s %d/%d", title, position, len(m.resources))))
 	for i, resource := range m.resources[start:end] {
 		index := start + i
 		line := truncate(resourceLine(resource), width-4)
@@ -442,6 +443,11 @@ func (m model) keyMap() tuiKeyMap {
 		return issueKeyMap()
 	case sectionHelpdesk:
 		return helpdeskKeyMap()
+	case sectionAgile:
+		if m.resourceKind != resourceKindSection {
+			return resourceKeyMap()
+		}
+		return agileKeyMap()
 	default:
 		return resourceKeyMap()
 	}

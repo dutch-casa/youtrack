@@ -21,6 +21,8 @@ type fakeClient struct {
 	users             []youtrack.User
 	articles          []youtrack.Article
 	agiles            []youtrack.Agile
+	sprints           []youtrack.Sprint
+	sprintRequests    *[]youtrack.SprintListOptions
 	comments          []youtrack.Comment
 	commentAdds       *[]commentAdd
 	attachments       []youtrack.Attachment
@@ -65,6 +67,13 @@ func (f fakeClient) Articles(ctx context.Context, opts youtrack.ArticleListOptio
 
 func (f fakeClient) Agiles(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Agile, error) {
 	return f.agiles, f.err
+}
+
+func (f fakeClient) Sprints(ctx context.Context, opts youtrack.SprintListOptions) ([]youtrack.Sprint, error) {
+	if f.sprintRequests != nil {
+		*f.sprintRequests = append(*f.sprintRequests, opts)
+	}
+	return f.sprints, f.err
 }
 
 func (f fakeClient) HelpdeskProjects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error) {
@@ -292,6 +301,50 @@ func TestHelpdeskProjectOpensIssueBackedTickets(t *testing.T) {
 	}
 	if requests[0].Query != "project: SUP #Unresolved" {
 		t.Fatalf("query = %q, want helpdesk project filter composed with query", requests[0].Query)
+	}
+}
+
+func TestAgileBoardOpensSprints(t *testing.T) {
+	var requests []youtrack.SprintListOptions
+	client := fakeClient{
+		sprints: []youtrack.Sprint{
+			{ID: "121-1", Name: "Sprint 1", IsDefault: true},
+			{ID: "121-2", Name: "Sprint 2", Archived: true},
+		},
+		sprintRequests: &requests,
+	}
+	m := newModel(context.Background(), client, Options{Top: 25})
+	m.section = sectionAgile
+	m.resources = []resourceItem{
+		{ID: "120-1", Title: "Platform Board"},
+		{ID: "120-2", Title: "Support Board"},
+	}
+	m.resourceSelected = 1
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("agile sprint command = nil")
+	}
+	if !m.resourcesLoading {
+		t.Fatal("resourcesLoading = false, want true while loading sprints")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	if len(requests) != 1 {
+		t.Fatalf("sprint requests = %#v, want one request", requests)
+	}
+	if requests[0].AgileID != "120-2" {
+		t.Fatalf("AgileID = %q, want selected board ID", requests[0].AgileID)
+	}
+	if m.resourceTitle != "Sprints: Support Board" {
+		t.Fatalf("resourceTitle = %q, want sprint context title", m.resourceTitle)
+	}
+	if m.resourceKind != resourceKindAgileSprints {
+		t.Fatalf("resourceKind = %v, want resourceKindAgileSprints", m.resourceKind)
+	}
+	if len(m.resources) != 2 || m.resources[0].Title != "Sprint 1" {
+		t.Fatalf("resources = %#v, want sprint resources", m.resources)
 	}
 }
 
@@ -550,6 +603,27 @@ func TestHelpdeskFooterShowsTicketAction(t *testing.T) {
 	footer := stripANSI(m.footer())
 	if !strings.Contains(footer, "enter tickets") {
 		t.Fatalf("footer = %q, want enter tickets action", footer)
+	}
+}
+
+func TestAgileFooterShowsSprintAction(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionAgile
+
+	footer := stripANSI(m.footer())
+	if !strings.Contains(footer, "enter sprints") {
+		t.Fatalf("footer = %q, want enter sprints action", footer)
+	}
+}
+
+func TestAgileSprintFooterHidesBoardDrilldownAction(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionAgile
+	m.resourceKind = resourceKindAgileSprints
+
+	footer := stripANSI(m.footer())
+	if strings.Contains(footer, "enter sprints") {
+		t.Fatalf("footer = %q, want sprint drilldown action hidden for sprint resources", footer)
 	}
 }
 

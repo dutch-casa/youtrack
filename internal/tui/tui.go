@@ -28,6 +28,7 @@ type Client interface {
 	Users(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.User, error)
 	Articles(ctx context.Context, opts youtrack.ArticleListOptions) ([]youtrack.Article, error)
 	Agiles(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Agile, error)
+	Sprints(ctx context.Context, opts youtrack.SprintListOptions) ([]youtrack.Sprint, error)
 	HelpdeskProjects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error)
 	Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error)
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
@@ -104,6 +105,13 @@ type resourceItem struct {
 	BodyMarkdown bool
 }
 
+type resourceKind int
+
+const (
+	resourceKindSection resourceKind = iota
+	resourceKindAgileSprints
+)
+
 type projectOption struct {
 	ID       string
 	Name     string
@@ -128,6 +136,8 @@ type model struct {
 
 	resources         []resourceItem
 	allResources      []resourceItem
+	resourceTitle     string
+	resourceKind      resourceKind
 	resourceSelected  int
 	resourcesLoading  bool
 	resourcesErr      error
@@ -189,6 +199,8 @@ type issuesMsg struct {
 
 type resourcesMsg struct {
 	section   section
+	title     string
+	kind      resourceKind
 	resources []resourceItem
 	err       error
 }
@@ -380,6 +392,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if m.section == sectionHelpdesk && !m.resourcesLoading {
 				return m.openSelectedHelpdeskTickets()
 			}
+			if m.section == sectionAgile && m.resourceKind == resourceKindSection && !m.resourcesLoading {
+				return m.openSelectedAgileSprints()
+			}
 		case "tab":
 			if m.section != sectionIssues {
 				return m, nil
@@ -433,6 +448,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.resourcesLoading = false
 		m.resourcesErr = msg.err
+		m.resourceTitle = msg.title
+		m.resourceKind = msg.kind
 		m.allResources = msg.resources
 		m.resources = filterResources(msg.resources, m.resourceFilter)
 		if m.resourceSelected >= len(m.resources) {
@@ -819,6 +836,25 @@ func (m model) openSelectedHelpdeskTickets() (tea.Model, tea.Cmd) {
 	return m.withIssueListLoading("Loading help desk tickets for " + project + "...")
 }
 
+func (m model) openSelectedAgileSprints() (tea.Model, tea.Cmd) {
+	resource, ok := m.currentResource()
+	if !ok {
+		return m, nil
+	}
+	agileID := strings.TrimSpace(resource.ID)
+	if agileID == "" {
+		return m, nil
+	}
+	title := firstNonEmpty(resource.Title, agileID)
+	m.resourcesLoading = true
+	m.resourcesErr = nil
+	m.resourceSelected = 0
+	m.resourceFilter = ""
+	m.detail.GotoTop()
+	m.status = "Loading sprints for " + title + "..."
+	return m, m.loadAgileSprints(agileID, title)
+}
+
 func (m model) loadIssues() tea.Msg {
 	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.issueSearchQuery(), Top: m.opts.Top, Skip: m.opts.Skip})
 	return issuesMsg{issues: issues, err: err}
@@ -853,7 +889,14 @@ func (m model) issueSearchQuery() string {
 func (m model) loadResources(s section) tea.Cmd {
 	return func() tea.Msg {
 		resources, err := m.resourcesForSection(s)
-		return resourcesMsg{section: s, resources: resources, err: err}
+		return resourcesMsg{section: s, title: s.title(), kind: resourceKindSection, resources: resources, err: err}
+	}
+}
+
+func (m model) loadAgileSprints(agileID, title string) tea.Cmd {
+	return func() tea.Msg {
+		sprints, err := m.client.Sprints(m.ctx, youtrack.SprintListOptions{AgileID: agileID, Top: m.opts.Top})
+		return resourcesMsg{section: sectionAgile, title: "Sprints: " + title, kind: resourceKindAgileSprints, resources: sprintResources(sprints), err: err}
 	}
 }
 
@@ -907,6 +950,8 @@ func (m model) switchSection(s section) (tea.Model, tea.Cmd) {
 	}
 	m.resources = nil
 	m.allResources = nil
+	m.resourceTitle = s.title()
+	m.resourceKind = resourceKindSection
 	m.resourceSelected = 0
 	m.resourcesLoading = true
 	m.resourcesErr = nil
@@ -921,6 +966,8 @@ func (m model) withSectionLoading(status string) (tea.Model, tea.Cmd) {
 	}
 	m.resourcesLoading = true
 	m.resourcesErr = nil
+	m.resourceTitle = m.section.title()
+	m.resourceKind = resourceKindSection
 	m.resourceSelected = 0
 	m.detail.GotoTop()
 	m.status = status
