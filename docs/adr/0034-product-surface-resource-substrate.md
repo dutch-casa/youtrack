@@ -18,7 +18,7 @@ Keep three boundaries:
 - `internal/ytcli` exposes noun-based command groups for agent use.
 - `internal/tui` owns a resource substrate that projects typed entities into searchable list/detail resources.
 
-Issues remain the richest TUI section because they have first-class issue actions. Issue narrowing stays server-side through YouTrack search: `/` edits the issue query, `P` adds a project filter, and `o` jumps to a specific issue ID. Other product areas use the shared resource substrate first: list, detail, section switching, mouse selection, color treatment, and fzf-style local search. Each section can later deepen with domain-specific actions without rebuilding navigation.
+Issues remain the richest TUI section because they have first-class issue actions. Issue narrowing stays server-side through YouTrack search: `/` edits the issue query, `P` opens a project selector that applies a project filter, and `i` jumps to a specific issue ID. Other product areas use the shared resource substrate first: list, detail, section switching, mouse selection, browser opening, color treatment, and fzf-style live local search. Each section can later deepen with domain-specific actions without rebuilding navigation.
 
 ## Consequences
 

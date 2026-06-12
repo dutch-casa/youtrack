@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"errors"
+	"regexp"
 	"strconv"
 	"strings"
 	"testing"
@@ -234,7 +235,7 @@ func TestIssuePromptJumpsToIssue(t *testing.T) {
 	m = updated.(model)
 	m.projectFilter = "SUP"
 
-	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
 	m = updated.(model)
 	m.issueInput.SetValue("ABC-123")
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
@@ -252,6 +253,164 @@ func TestIssuePromptJumpsToIssue(t *testing.T) {
 	if m.projectFilter != "" {
 		t.Fatalf("projectFilter = %q, want cleared for direct issue jump", m.projectFilter)
 	}
+}
+
+func TestProjectSelectorLoadsAndAppliesProject(t *testing.T) {
+	var requests []youtrack.IssueListOptions
+	client := fakeClient{
+		issueRequests: &requests,
+		projects: []youtrack.Project{
+			{ShortName: "ABC", Name: "Alpha"},
+			{ShortName: "SUP", Name: "Support"},
+		},
+	}
+	m := newModel(context.Background(), client, Options{Top: 25})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'P'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("project load command = nil")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	for _, r := range "sup" {
+		updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{r}})
+		m = updated.(model)
+	}
+	if len(m.projectOptions) != 1 || m.projectOptions[0].ID != "SUP" {
+		t.Fatalf("projectOptions = %#v, want live-filtered SUP option", m.projectOptions)
+	}
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("project apply command = nil")
+	}
+	_ = cmd()
+	if len(requests) != 1 || requests[0].Query != "project: SUP" {
+		t.Fatalf("requests = %#v, want project SUP query", requests)
+	}
+}
+
+func TestResourceSearchFiltersLive(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionKnowledge
+	m.allResources = []resourceItem{
+		{ID: "KB-1", Title: "Install Guide"},
+		{ID: "KB-2", Title: "Billing FAQ"},
+	}
+	m.resources = append([]resourceItem(nil), m.allResources...)
+
+	updated, _ := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'b'}})
+	m = updated.(model)
+
+	if len(m.resources) == 0 || m.resources[0].ID != "KB-2" {
+		t.Fatalf("live resources = %#v, want KB-2 first", m.resources)
+	}
+}
+
+func TestOpenCurrentIssueInBrowser(t *testing.T) {
+	var opened []string
+	m := newModel(context.Background(), fakeClient{}, Options{
+		BaseURL: "https://example.youtrack.cloud",
+		OpenURL: func(rawURL string) error {
+			opened = append(opened, rawURL)
+			return nil
+		},
+	})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("browser command = nil")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	if len(opened) != 1 || opened[0] != "https://example.youtrack.cloud/issue/ABC-1" {
+		t.Fatalf("opened = %#v, want issue browser URL", opened)
+	}
+}
+
+func TestOpenCurrentArticleInBrowser(t *testing.T) {
+	var opened []string
+	m := newModel(context.Background(), fakeClient{}, Options{
+		BaseURL: "https://example.youtrack.cloud",
+		OpenURL: func(rawURL string) error {
+			opened = append(opened, rawURL)
+			return nil
+		},
+	})
+	m.section = sectionKnowledge
+	m.resources = []resourceItem{{ID: "KB-1", Title: "Install Guide"}}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'o'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("browser command = nil")
+	}
+	updated, _ = m.Update(cmd())
+	m = updated.(model)
+	if len(opened) != 1 || opened[0] != "https://example.youtrack.cloud/articles/KB-1" {
+		t.Fatalf("opened = %#v, want article browser URL", opened)
+	}
+}
+
+func TestMouseWheelOverDetailScrollsContent(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.width = 90
+	m.height = 24
+	m.section = sectionKnowledge
+	m.resources = []resourceItem{{
+		ID:    "KB-1",
+		Title: "Long article",
+		Body:  strings.Repeat("content\n", 40),
+	}}
+
+	updated, cmd := m.Update(tea.MouseMsg(tea.MouseEvent{
+		X:      50,
+		Y:      8,
+		Action: tea.MouseActionPress,
+		Button: tea.MouseButtonWheelDown,
+	}))
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("detail wheel scroll command != nil")
+	}
+	if m.detail.YOffset == 0 {
+		t.Fatal("detail YOffset = 0, want content scroll")
+	}
+	if m.selected != 0 {
+		t.Fatalf("selected = %d, want list selection unchanged", m.selected)
+	}
+}
+
+func TestTerminalTextUnescapesEntities(t *testing.T) {
+	got := inlineText("A&nbsp;&amp;&nbsp;B")
+	if got != "A & B" {
+		t.Fatalf("inlineText() = %q, want entity-decoded text", got)
+	}
+}
+
+func TestMarkdownRenderingFormatsDocumentText(t *testing.T) {
+	rendered := renderMarkdown("# Title\n\n- A&nbsp;B\n\n```go\nfmt.Println(\"x\")\n```", 60)
+	if strings.Contains(rendered, "&nbsp;") || strings.Contains(rendered, "```") {
+		t.Fatalf("renderMarkdown() = %q, want formatted terminal markdown", rendered)
+	}
+	plain := stripANSI(rendered)
+	if !strings.Contains(plain, "Title") || !strings.Contains(plain, "A B") || !strings.Contains(plain, "fmt.Println") {
+		t.Fatalf("renderMarkdown() = %q, want rendered content", rendered)
+	}
+}
+
+var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
+
+func stripANSI(value string) string {
+	return ansiEscapePattern.ReplaceAllString(value, "")
 }
 
 func TestMouseClickSwitchesSection(t *testing.T) {

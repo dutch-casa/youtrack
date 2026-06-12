@@ -1159,11 +1159,17 @@ func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {
 			if top < 1 {
 				return errors.New("--top must be greater than zero")
 			}
-			client, err := a.client(cmd.Context())
+			creds, err := a.credentials(cmd.Context())
 			if err != nil {
 				return err
 			}
-			return tui.Run(ctx, client, tui.Options{Query: query, Top: top}, a.out)
+			client := youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil)
+			return tui.Run(ctx, client, tui.Options{
+				Query:   query,
+				Top:     top,
+				BaseURL: creds.NormalizedBaseURL(),
+				OpenURL: openBrowser,
+			}, a.out)
 		},
 	}
 	cmd.Flags().StringVarP(&query, "query", "q", "", "initial YouTrack issue query")
@@ -1182,30 +1188,38 @@ func validatePageFlags(top, skip int) error {
 }
 
 func (a *app) client(ctx context.Context) (*youtrack.Client, error) {
-	creds, err := a.store.Load()
-	if err == nil {
-		return youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil), nil
-	}
-	if !errors.Is(err, auth.ErrNotConfigured) {
+	creds, err := a.credentials(ctx)
+	if err != nil {
 		return nil, err
 	}
+	return youtrack.NewClient(creds.NormalizedBaseURL(), creds.Token, nil), nil
+}
+
+func (a *app) credentials(ctx context.Context) (auth.Credentials, error) {
+	creds, err := a.store.Load()
+	if err == nil {
+		return creds, nil
+	}
+	if !errors.Is(err, auth.ErrNotConfigured) {
+		return auth.Credentials{}, err
+	}
 	if !canPrompt(a.in) {
-		return nil, missingAuthError()
+		return auth.Credentials{}, missingAuthError()
 	}
 
 	fmt.Fprintln(a.errOut, "YouTrack authentication is required.")
 	prompted, err := auth.Prompt(a.in, a.errOut)
 	if err != nil {
-		return nil, err
+		return auth.Credentials{}, err
 	}
 	client := youtrack.NewClient(prompted.NormalizedBaseURL(), prompted.Token, nil)
 	if _, err := client.CurrentUser(ctx); err != nil {
-		return nil, fmt.Errorf("verify credentials: %w", err)
+		return auth.Credentials{}, fmt.Errorf("verify credentials: %w", err)
 	}
 	if err := a.store.Save(prompted); err != nil {
-		return nil, err
+		return auth.Credentials{}, err
 	}
-	return client, nil
+	return prompted, nil
 }
 
 func missingAuthError() error {

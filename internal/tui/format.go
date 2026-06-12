@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"html"
 	"strings"
 	"time"
 
@@ -9,6 +10,7 @@ import (
 )
 
 func truncate(value string, width int) string {
+	value = terminalText(value)
 	if width <= 0 || len(value) <= width {
 		return value
 	}
@@ -33,10 +35,23 @@ func truncateBlock(value string, width, height int) string {
 }
 
 func trimBlank(value string) string {
+	value = terminalText(value)
 	if strings.TrimSpace(value) == "" {
 		return "No description"
 	}
 	return value
+}
+
+func terminalText(value string) string {
+	value = html.UnescapeString(value)
+	value = strings.ReplaceAll(value, "\u00a0", " ")
+	value = strings.ReplaceAll(value, "\u202f", " ")
+	value = strings.ReplaceAll(value, "\r\n", "\n")
+	return strings.ReplaceAll(value, "\r", "\n")
+}
+
+func inlineText(value string) string {
+	return strings.TrimSpace(terminalText(value))
 }
 
 func resolvedText(value any) string {
@@ -48,6 +63,7 @@ func resolvedText(value any) string {
 
 func firstNonEmpty(values ...string) string {
 	for _, value := range values {
+		value = inlineText(value)
 		if value != "" {
 			return value
 		}
@@ -58,6 +74,7 @@ func firstNonEmpty(values ...string) string {
 func nonEmpty(values ...string) []string {
 	result := make([]string, 0, len(values))
 	for _, value := range values {
+		value = inlineText(value)
 		if value != "" {
 			result = append(result, value)
 		}

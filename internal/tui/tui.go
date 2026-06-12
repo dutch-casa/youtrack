@@ -13,9 +13,11 @@ import (
 )
 
 type Options struct {
-	Query string
-	Top   int
-	Skip  int
+	Query   string
+	Top     int
+	Skip    int
+	BaseURL string
+	OpenURL func(string) error
 }
 
 type Client interface {
@@ -86,10 +88,17 @@ var sections = []section{
 }
 
 type resourceItem struct {
+	ID           string
+	Title        string
+	Subtitle     string
+	Body         string
+	BodyMarkdown bool
+}
+
+type projectOption struct {
 	ID       string
-	Title    string
+	Name     string
 	Subtitle string
-	Body     string
 }
 
 type model struct {
@@ -133,6 +142,12 @@ type model struct {
 	issueInput    textinput.Model
 	projectFilter string
 
+	projectOptions        []projectOption
+	allProjectOptions     []projectOption
+	projectOptionSelected int
+	projectOptionsLoading bool
+	projectOptionsErr     error
+
 	comments        map[string][]youtrack.Comment
 	commentsLoading bool
 	commentsErr     error
@@ -163,6 +178,16 @@ type resourcesMsg struct {
 	section   section
 	resources []resourceItem
 	err       error
+}
+
+type projectOptionsMsg struct {
+	projects []projectOption
+	err      error
+}
+
+type openURLMsg struct {
+	url string
+	err error
 }
 
 type commentsMsg struct {
@@ -313,6 +338,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				return m, m.openProjectPrompt()
 			}
 		case "o":
+			return m, m.openCurrentInBrowser
+		case "i":
 			if m.section == sectionIssues && !m.loading {
 				return m, m.openIssuePrompt()
 			}
@@ -374,6 +401,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resourceSelected = max(0, len(m.resources)-1)
 		}
 		m.detail.GotoTop()
+	case projectOptionsMsg:
+		m.projectOptionsLoading = false
+		m.projectOptionsErr = msg.err
+		m.allProjectOptions = msg.projects
+		m.projectOptions = filterProjectOptions(msg.projects, m.projectInput.Value())
+		if m.projectOptionSelected >= len(m.projectOptions) {
+			m.projectOptionSelected = max(0, len(m.projectOptions)-1)
+		}
+	case openURLMsg:
+		if msg.err != nil {
+			m.status = "Open failed: " + msg.err.Error()
+			return m, nil
+		}
+		m.status = "Opened " + msg.url
 	case commentsMsg:
 		if m.currentIssueID() == msg.issueID {
 			m.commentsLoading = false
@@ -617,6 +658,12 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.queryInput, cmd = m.queryInput.Update(msg)
+	if m.section != sectionIssues {
+		m.resourceFilter = strings.TrimSpace(m.queryInput.Value())
+		m.resources = filterResources(m.allResources, m.resourceFilter)
+		m.resourceSelected = min(m.resourceSelected, max(0, len(m.resources)-1))
+		m.detail.GotoTop()
+	}
 	return m, cmd
 }
 
@@ -625,8 +672,26 @@ func (m model) updateProjectInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	case "esc", "ctrl+c":
 		m.closeProjectPrompt()
 		return m, nil
+	case "up", "k":
+		if m.projectOptionSelected > 0 {
+			m.projectOptionSelected--
+		}
+		return m, nil
+	case "down", "j":
+		if m.projectOptionSelected < len(m.projectOptions)-1 {
+			m.projectOptionSelected++
+		}
+		return m, nil
+	case "g", "home":
+		m.projectOptionSelected = 0
+		return m, nil
+	case "G", "end":
+		if len(m.projectOptions) > 0 {
+			m.projectOptionSelected = len(m.projectOptions) - 1
+		}
+		return m, nil
 	case "enter":
-		project := strings.TrimSpace(m.projectInput.Value())
+		project := m.selectedProjectFilter()
 		m.closeProjectPrompt()
 		m.projectFilter = project
 		m.opts.Skip = 0
@@ -639,7 +704,25 @@ func (m model) updateProjectInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 	var cmd tea.Cmd
 	m.projectInput, cmd = m.projectInput.Update(msg)
+	m.projectOptions = filterProjectOptions(m.allProjectOptions, m.projectInput.Value())
+	m.projectOptionSelected = min(m.projectOptionSelected, max(0, len(m.projectOptions)-1))
 	return m, cmd
+}
+
+func (m model) selectedProjectFilter() string {
+	if len(m.projectOptions) == 0 {
+		return strings.TrimSpace(m.projectInput.Value())
+	}
+	selected := min(max(m.projectOptionSelected, 0), len(m.projectOptions)-1)
+	return m.projectOptions[selected].ID
+}
+
+func (m model) loadProjectOptions() tea.Msg {
+	projects, err := m.client.Projects(m.ctx, youtrack.PageOptions{Top: 200})
+	if err != nil {
+		return projectOptionsMsg{err: err}
+	}
+	return projectOptionsMsg{projects: projectOptions(projects)}
 }
 
 func (m model) updateIssueInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
@@ -668,6 +751,20 @@ func (m model) updateIssueInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) loadIssues() tea.Msg {
 	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.issueSearchQuery(), Top: m.opts.Top, Skip: m.opts.Skip})
 	return issuesMsg{issues: issues, err: err}
+}
+
+func (m model) openCurrentInBrowser() tea.Msg {
+	rawURL, err := m.currentBrowserURL()
+	if err != nil {
+		return openURLMsg{err: err}
+	}
+	if m.opts.OpenURL == nil {
+		return openURLMsg{url: rawURL}
+	}
+	if err := m.opts.OpenURL(rawURL); err != nil {
+		return openURLMsg{url: rawURL, err: err}
+	}
+	return openURLMsg{url: rawURL}
 }
 
 func (m model) issueSearchQuery() string {
@@ -812,10 +909,19 @@ func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 	if event.Action != tea.MouseActionPress {
 		return m, nil
 	}
+	if m.inputMode == modeProject {
+		return m.updateProjectMouse(event)
+	}
 	if event.Button == tea.MouseButtonWheelDown {
+		if m.mouseInDetailPane(event) {
+			return m.scrollDetailBy(1), nil
+		}
 		return m.moveSelection(1)
 	}
 	if event.Button == tea.MouseButtonWheelUp {
+		if m.mouseInDetailPane(event) {
+			return m.scrollDetailBy(-1), nil
+		}
 		return m.moveSelection(-1)
 	}
 	if event.Button != tea.MouseButtonLeft {
@@ -854,6 +960,55 @@ func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
 		m.detail.GotoTop()
 	}
 	return m, nil
+}
+
+func (m model) updateProjectMouse(event tea.MouseEvent) (tea.Model, tea.Cmd) {
+	switch event.Button {
+	case tea.MouseButtonWheelDown:
+		if m.projectOptionSelected < len(m.projectOptions)-1 {
+			m.projectOptionSelected++
+		}
+		return m, nil
+	case tea.MouseButtonWheelUp:
+		if m.projectOptionSelected > 0 {
+			m.projectOptionSelected--
+		}
+		return m, nil
+	case tea.MouseButtonLeft:
+		row := event.Y - 4
+		if row < 0 {
+			return m, nil
+		}
+		start, end := visibleResourceRange(m.projectOptionSelected, len(m.projectOptions), max(3, m.height-7))
+		index := start + row
+		if index < start || index >= end {
+			return m, nil
+		}
+		m.projectOptionSelected = index
+		project := m.selectedProjectFilter()
+		m.closeProjectPrompt()
+		m.projectFilter = project
+		m.opts.Skip = 0
+		m.selected = 0
+		if project == "" {
+			return m.withIssueListLoading("Loading issues...")
+		}
+		return m.withIssueListLoading("Loading project " + project + "...")
+	default:
+		return m, nil
+	}
+}
+
+func (m model) mouseInDetailPane(event tea.MouseEvent) bool {
+	listWidth := max(28, m.width/3)
+	return event.X >= listWidth
+}
+
+func (m model) scrollDetailBy(direction int) model {
+	m.syncDetailViewport()
+	delta := max(1, m.detail.Height/3)
+	m.detail.SetYOffset(m.detail.YOffset + direction*delta)
+	return m
 }
 
 func (m model) withIssueListLoading(status string) (tea.Model, tea.Cmd) {

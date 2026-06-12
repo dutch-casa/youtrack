@@ -58,6 +58,13 @@ func (m *model) openProjectPrompt() tea.Cmd {
 	m.projectInput.SetValue(m.projectFilter)
 	m.clearActionErrors()
 	m.status = ""
+	m.projectOptions = filterProjectOptions(m.allProjectOptions, m.projectFilter)
+	m.projectOptionSelected = 0
+	m.projectOptionsErr = nil
+	if len(m.allProjectOptions) == 0 {
+		m.projectOptionsLoading = true
+		return m.loadProjectOptions
+	}
 	return textinput.Blink
 }
 
@@ -91,6 +98,7 @@ func (m *model) closeQueryPrompt() {
 
 func (m *model) closeProjectPrompt() {
 	m.inputMode = modeNavigation
+	m.projectOptionsLoading = false
 	clearInput(&m.projectInput)
 }
 

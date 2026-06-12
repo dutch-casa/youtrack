@@ -14,8 +14,8 @@ func issueFieldValue(issue youtrack.Issue, names ...string) string {
 func issueFields(issue youtrack.Issue) []string {
 	lines := make([]string, 0, len(issue.CustomFields))
 	for _, field := range issue.CustomFields {
-		name := strings.TrimSpace(field.Name)
-		value := strings.TrimSpace(field.Value)
+		name := inlineText(field.Name)
+		value := inlineText(field.Value)
 		if name == "" || value == "" {
 			continue
 		}
@@ -49,7 +49,7 @@ func issueMetadataLine(issue youtrack.Issue) string {
 func issueListLine(issue youtrack.Issue) string {
 	state := issueFieldValue(issue, "State")
 	if state == "" {
-		return fmt.Sprintf("%-12s %s", issue.IDReadable, issue.Summary)
+		return fmt.Sprintf("%-12s %s", issue.IDReadable, inlineText(issue.Summary))
 	}
-	return fmt.Sprintf("%-12s [%s] %s", issue.IDReadable, state, issue.Summary)
+	return fmt.Sprintf("%-12s [%s] %s", issue.IDReadable, state, inlineText(issue.Summary))
 }

@@ -17,6 +17,9 @@ func (m model) View() string {
 
 	bodyHeight := max(3, m.height-3)
 	header := m.sectionBar() + "\n"
+	if m.inputMode == modeProject {
+		return header + m.projectSelector(m.width, bodyHeight-1) + "\n" + m.footer()
+	}
 	if m.section == sectionIssues && m.loading {
 		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading issues...") + "\n" + m.footer()
 	}
@@ -113,6 +116,40 @@ func (m model) resourceList(width, height int) string {
 	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
 }
 
+func (m model) projectSelector(width, height int) string {
+	if m.projectOptionsLoading {
+		return panelStyle.Width(width).Height(height).Render("Loading projects...")
+	}
+	if m.projectOptionsErr != nil {
+		return panelStyle.Width(width).Height(height).Render("Error: " + m.projectOptionsErr.Error())
+	}
+	rows := []string{
+		titleStyle.Render("Project Selector"),
+		helpStyle.Render("type to filter, enter to apply, esc to cancel"),
+		"",
+	}
+	start, end := visibleResourceRange(m.projectOptionSelected, len(m.projectOptions), height-3)
+	for i, option := range m.projectOptions[start:end] {
+		index := start + i
+		line := truncate(projectOptionLine(option), width-4)
+		if index == m.projectOptionSelected {
+			line = selectedStyle.Render(line)
+		}
+		rows = append(rows, line)
+	}
+	if len(m.projectOptions) == 0 {
+		rows = append(rows, "No matching projects")
+	}
+	return panelStyle.Width(width).Height(height).Render(strings.Join(rows, "\n"))
+}
+
+func projectOptionLine(option projectOption) string {
+	if option.Subtitle == "" {
+		return firstNonEmpty(option.ID, option.Name)
+	}
+	return firstNonEmpty(option.ID, option.Name) + "  " + option.Name + "  " + option.Subtitle
+}
+
 func visibleResourceRange(selected, total, height int) (int, int) {
 	return visibleIssueRange(selected, total, height)
 }
@@ -152,7 +189,7 @@ func visibleIssueRange(selected, total, height int) (int, int) {
 }
 
 func (m model) issuePane(width, height int) string {
-	content := m.issuePaneContent()
+	content := m.issuePaneContent(max(20, width-4))
 	return m.renderDetailViewport(content, width, height)
 }
 
@@ -161,14 +198,18 @@ func (m model) resourcePane(width, height int) string {
 		return m.renderDetailViewport("No "+strings.ToLower(m.section.title()), width, height)
 	}
 	selected := min(max(m.resourceSelected, 0), len(m.resources)-1)
-	content := m.resources[selected].Body
+	resource := m.resources[selected]
+	content := resource.Body
+	if resource.BodyMarkdown {
+		content = renderMarkdown(content, max(20, width-4))
+	}
 	if strings.TrimSpace(content) == "" {
-		content = titleStyle.Render(m.resources[selected].Title)
+		content = titleStyle.Render(resource.Title)
 	}
 	return m.renderDetailViewport(content, width, height)
 }
 
-func (m model) issuePaneContent() string {
+func (m model) issuePaneContent(width int) string {
 	if len(m.issues) == 0 {
 		return "No issues"
 	}
@@ -184,7 +225,7 @@ func (m model) issuePaneContent() string {
 	case attachmentsPane:
 		return m.issueAttachments()
 	default:
-		return m.issueDetail()
+		return m.issueDetail(width)
 	}
 }
 
@@ -204,7 +245,7 @@ func (m *model) syncDetailViewport() {
 	m.detail.Width = max(1, detailWidth-4)
 	m.detail.Height = max(1, bodyHeight-2)
 	if m.section == sectionIssues {
-		m.detail.SetContent(m.issuePaneContent())
+		m.detail.SetContent(m.issuePaneContent(max(20, detailWidth-4)))
 		return
 	}
 	if len(m.resources) == 0 {
@@ -212,17 +253,22 @@ func (m *model) syncDetailViewport() {
 		return
 	}
 	selected := min(max(m.resourceSelected, 0), len(m.resources)-1)
-	m.detail.SetContent(m.resources[selected].Body)
+	resource := m.resources[selected]
+	content := resource.Body
+	if resource.BodyMarkdown {
+		content = renderMarkdown(content, max(20, detailWidth-4))
+	}
+	m.detail.SetContent(content)
 }
 
-func (m model) issueDetail() string {
+func (m model) issueDetail(width int) string {
 	issue := m.issues[m.selected]
 	lines := []string{
 		titleStyle.Render(issue.IDReadable),
-		issue.Summary,
+		inlineText(issue.Summary),
 		issueMetadataLine(issue),
 		"",
-		trimBlank(issue.Description),
+		renderMarkdown(issue.Description, width),
 	}
 	fields := issueFields(issue)
 	if len(fields) > 0 {
@@ -248,7 +294,7 @@ func (m model) issueComments() string {
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Comments"), ""}
 	for _, comment := range comments {
 		author := firstNonEmpty(comment.Author.FullName, comment.Author.Name, comment.Author.Login)
-		lines = append(lines, author+": "+strings.TrimSpace(comment.Text), "")
+		lines = append(lines, author+": "+inlineText(comment.Text), "")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -274,7 +320,7 @@ func (m model) issueLinks() string {
 			continue
 		}
 		for _, issue := range issues {
-			lines = append(lines, fmt.Sprintf("%s  %s  %s  %s", firstNonEmpty(link.LinkType.Name, "Link"), linkDirection(link), issue.IDReadable, issue.Summary))
+			lines = append(lines, fmt.Sprintf("%s  %s  %s  %s", firstNonEmpty(link.LinkType.Name, "Link"), linkDirection(link), issue.IDReadable, inlineText(issue.Summary)))
 		}
 	}
 	return strings.Join(lines, "\n")
@@ -317,8 +363,8 @@ func (m model) issueWorkItems() string {
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Work Items"), ""}
 	for _, item := range workItems {
 		lines = append(lines, workItemLine(item))
-		if strings.TrimSpace(item.Text) != "" {
-			lines = append(lines, strings.TrimSpace(item.Text))
+		if inlineText(item.Text) != "" {
+			lines = append(lines, inlineText(item.Text))
 		}
 		lines = append(lines, "")
 	}
@@ -345,10 +391,10 @@ func (m model) issueAttachments() string {
 		kind := firstNonEmpty(attachment.MimeType, attachment.Extension)
 		details := strings.TrimSpace(strings.Join(nonEmpty(size, kind, author), "  "))
 		if details != "" {
-			lines = append(lines, attachment.Name+"  "+details)
+			lines = append(lines, inlineText(attachment.Name)+"  "+details)
 			continue
 		}
-		lines = append(lines, attachment.Name)
+		lines = append(lines, inlineText(attachment.Name))
 	}
 	return strings.Join(lines, "\n")
 }
@@ -367,7 +413,7 @@ func (m model) footer() string {
 		return commandStyle.Render(m.queryInput.View())
 	}
 	if m.inputMode == modeProject {
-		return commandStyle.Render(m.projectInput.View())
+		return commandStyle.Render(m.projectInput.View()) + "  " + helpStyle.Render("enter apply  esc cancel")
 	}
 	if m.inputMode == modeIssue {
 		return commandStyle.Render(m.issueInput.View())
@@ -389,7 +435,7 @@ func (m model) footer() string {
 
 func (m model) helpText() string {
 	if m.section != sectionIssues {
-		return "1-6 sections  / fuzzy  click select  wheel move  j/k move  pgup/pgdn scroll  r refresh  q quit"
+		return "1-6 sections  / live fuzzy  o browser  click select  wheel list/content  j/k move  pgup/pgdn scroll  r refresh  q quit"
 	}
-	return "1-6 sections  click select  wheel move  / query  P project  o issue  c comment  w work  n/p page  tab panes  pgup/pgdn scroll  : command  r refresh  q quit"
+	return "1-6 sections  click select  wheel list/content  / query  P project  i issue  o browser  c comment  w work  n/p page  tab panes  : command  r refresh  q quit"
 }

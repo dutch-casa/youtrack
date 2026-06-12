@@ -15,10 +15,11 @@ func articleResources(articles []youtrack.Article) []resourceItem {
 		id := firstNonEmpty(article.IDReadable, article.ID)
 		project := article.Project.ShortName
 		resources = append(resources, resourceItem{
-			ID:       id,
-			Title:    firstNonEmpty(article.Summary, id),
-			Subtitle: strings.TrimSpace(strings.Join(nonEmpty(project, article.Reporter.Login), "  ")),
-			Body:     articleBody(article),
+			ID:           id,
+			Title:        firstNonEmpty(article.Summary, id),
+			Subtitle:     strings.TrimSpace(strings.Join(nonEmpty(project, article.Reporter.Login), "  ")),
+			Body:         articleBody(article),
+			BodyMarkdown: true,
 		})
 	}
 	return resources
@@ -75,13 +76,62 @@ func projectResources(projects []youtrack.Project) []resourceItem {
 	for _, project := range projects {
 		kind := firstNonEmpty(project.ProjectType.Name, "standard")
 		resources = append(resources, resourceItem{
-			ID:       firstNonEmpty(project.ShortName, project.ID),
-			Title:    firstNonEmpty(project.Name, project.ShortName, project.ID),
-			Subtitle: strings.TrimSpace(strings.Join(nonEmpty(project.ShortName, kind, project.Leader.Login), "  ")),
-			Body:     projectBody(project, kind),
+			ID:           firstNonEmpty(project.ShortName, project.ID),
+			Title:        firstNonEmpty(project.Name, project.ShortName, project.ID),
+			Subtitle:     strings.TrimSpace(strings.Join(nonEmpty(project.ShortName, kind, project.Leader.Login), "  ")),
+			Body:         projectBody(project, kind),
+			BodyMarkdown: strings.TrimSpace(project.Description) != "",
 		})
 	}
 	return resources
+}
+
+func projectOptions(projects []youtrack.Project) []projectOption {
+	options := make([]projectOption, 0, len(projects))
+	for _, project := range projects {
+		id := firstNonEmpty(project.ShortName, project.ID)
+		kind := firstNonEmpty(project.ProjectType.Name, "standard")
+		options = append(options, projectOption{
+			ID:       id,
+			Name:     firstNonEmpty(project.Name, id),
+			Subtitle: strings.TrimSpace(strings.Join(nonEmpty(kind, project.Leader.Login), "  ")),
+		})
+	}
+	return options
+}
+
+func filterProjectOptions(options []projectOption, query string) []projectOption {
+	query = strings.TrimSpace(query)
+	if query == "" {
+		return append([]projectOption(nil), options...)
+	}
+	matches := make([]projectOptionMatch, 0, len(options))
+	for _, option := range options {
+		score, ok := fuzzyScore(projectOptionSearchText(option), query)
+		if ok {
+			matches = append(matches, projectOptionMatch{option: option, score: score})
+		}
+	}
+	sort.SliceStable(matches, func(i, j int) bool {
+		if matches[i].score == matches[j].score {
+			return matches[i].option.ID < matches[j].option.ID
+		}
+		return matches[i].score > matches[j].score
+	})
+	filtered := make([]projectOption, 0, len(matches))
+	for _, match := range matches {
+		filtered = append(filtered, match.option)
+	}
+	return filtered
+}
+
+type projectOptionMatch struct {
+	option projectOption
+	score  int
+}
+
+func projectOptionSearchText(option projectOption) string {
+	return strings.Join(nonEmpty(option.ID, option.Name, option.Subtitle), " ")
 }
 
 func projectBody(project youtrack.Project, kind string) string {
@@ -97,7 +147,7 @@ func projectBody(project youtrack.Project, kind string) string {
 		lines = append(lines, statusStyle.Render("Archived"))
 	}
 	if strings.TrimSpace(project.Description) != "" {
-		lines = append(lines, "", trimBlank(project.Description))
+		lines = append(lines, "", terminalText(project.Description))
 	}
 	return strings.Join(lines, "\n")
 }
