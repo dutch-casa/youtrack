@@ -270,17 +270,23 @@ func (m model) footer() string {
 	if m.inputMode == modeComment {
 		return commandStyle.Render(m.commentInput.View())
 	}
+	if m.inputMode == modeWorkItem {
+		return commandStyle.Render(m.workItemInput.View())
+	}
 	if m.inputMode == modeQuery {
 		return commandStyle.Render(m.queryInput.View())
 	}
 	if m.commandErr != nil {
-		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render("/ query  c comment  n/p page  : command  esc cancel  q quit")
+		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  esc cancel  q quit")
 	}
 	if m.commentErr != nil {
-		return errorStyle.Render("comment failed: "+m.commentErr.Error()) + "  " + helpStyle.Render("/ query  c comment  n/p page  : command  esc cancel  q quit")
+		return errorStyle.Render("comment failed: "+m.commentErr.Error()) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  esc cancel  q quit")
+	}
+	if m.workItemErr != nil {
+		return errorStyle.Render("work item failed: "+m.workItemErr.Error()) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  esc cancel  q quit")
 	}
 	if m.status != "" {
-		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  c comment  n/p page  : command  tab panes  r refresh  q quit")
+		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  tab panes  r refresh  q quit")
 	}
-	return helpStyle.Render("j/k move  / query  c comment  n/p page  tab details/comments/links/activity/work/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  / query  c comment  w work  n/p page  tab details/comments/links/activity/work/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
 }

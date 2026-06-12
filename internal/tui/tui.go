@@ -24,6 +24,7 @@ type Client interface {
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
 	IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error)
 	WorkItems(ctx context.Context, opts youtrack.WorkItemListOptions) ([]youtrack.WorkItem, error)
+	AddWorkItem(ctx context.Context, req youtrack.AddWorkItemRequest) (youtrack.WorkItem, error)
 	AddComment(ctx context.Context, issueID, text string) (youtrack.Comment, error)
 	ApplyCommand(ctx context.Context, req youtrack.ApplyCommandRequest) (youtrack.CommandResult, error)
 }
@@ -45,6 +46,7 @@ const (
 	modeNavigation inputMode = iota
 	modeCommand
 	modeComment
+	modeWorkItem
 	modeQuery
 )
 
@@ -77,6 +79,10 @@ type model struct {
 	commentInput   textinput.Model
 	commentRunning bool
 	commentErr     error
+
+	workItemInput   textinput.Model
+	workItemRunning bool
+	workItemErr     error
 
 	queryInput textinput.Model
 
@@ -148,6 +154,12 @@ type addCommentMsg struct {
 	err     error
 }
 
+type addWorkItemMsg struct {
+	issueID string
+	draft   workItemDraft
+	err     error
+}
+
 func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
@@ -160,25 +172,30 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	commentInput.Prompt = "comment> "
 	commentInput.Placeholder = "Add a quick comment"
 	commentInput.CharLimit = 2048
+	workItemInput := textinput.New()
+	workItemInput.Prompt = "work> "
+	workItemInput.Placeholder = "45m implementation"
+	workItemInput.CharLimit = 512
 	queryInput := textinput.New()
 	queryInput.Prompt = "/ "
 	queryInput.Placeholder = "project: ABC #Unresolved"
 	queryInput.CharLimit = 512
 	detail := viewport.New(0, 0)
 	return model{
-		ctx:          ctx,
-		client:       client,
-		opts:         opts,
-		loading:      true,
-		detail:       detail,
-		commandInput: commandInput,
-		commentInput: commentInput,
-		queryInput:   queryInput,
-		comments:     make(map[string][]youtrack.Comment),
-		attachments:  make(map[string][]youtrack.Attachment),
-		activities:   make(map[string][]youtrack.Activity),
-		workItems:    make(map[string][]youtrack.WorkItem),
-		links:        make(map[string][]youtrack.IssueLink),
+		ctx:           ctx,
+		client:        client,
+		opts:          opts,
+		loading:       true,
+		detail:        detail,
+		commandInput:  commandInput,
+		commentInput:  commentInput,
+		workItemInput: workItemInput,
+		queryInput:    queryInput,
+		comments:      make(map[string][]youtrack.Comment),
+		attachments:   make(map[string][]youtrack.Attachment),
+		activities:    make(map[string][]youtrack.Activity),
+		workItems:     make(map[string][]youtrack.WorkItem),
+		links:         make(map[string][]youtrack.IssueLink),
 	}
 }
 
@@ -197,6 +214,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m.updateCommandInput(msg)
 		case modeComment:
 			return m.updateCommentInput(msg)
+		case modeWorkItem:
+			return m.updateWorkItemInput(msg)
 		case modeQuery:
 			return m.updateQueryInput(msg)
 		}
@@ -213,6 +232,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.commandInput.Focus()
 				m.commandErr = nil
 				m.commentErr = nil
+				m.workItemErr = nil
 				m.status = ""
 				return m, textinput.Blink
 			}
@@ -223,6 +243,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.commentInput.Focus()
 				m.commandErr = nil
 				m.commentErr = nil
+				m.workItemErr = nil
+				m.status = ""
+				return m, textinput.Blink
+			}
+		case "w":
+			if m.currentIssueID() != "" && !m.workItemRunning {
+				m.inputMode = modeWorkItem
+				m.workItemInput.Reset()
+				m.workItemInput.Focus()
+				m.commandErr = nil
+				m.commentErr = nil
+				m.workItemErr = nil
 				m.status = ""
 				return m, textinput.Blink
 			}
@@ -234,6 +266,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.queryInput.Focus()
 				m.commandErr = nil
 				m.commentErr = nil
+				m.workItemErr = nil
 				m.status = ""
 				return m, textinput.Blink
 			}
@@ -278,15 +311,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "r":
 			m.commandErr = nil
 			m.commentErr = nil
+			m.workItemErr = nil
 			m.inputMode = modeNavigation
 			m.commandRunning = false
 			m.commentRunning = false
+			m.workItemRunning = false
 			m.commandInput.Blur()
 			m.commandInput.Reset()
 			m.commandInput.SetValue("")
 			m.commentInput.Blur()
 			m.commentInput.Reset()
 			m.commentInput.SetValue("")
+			m.workItemInput.Blur()
+			m.workItemInput.Reset()
+			m.workItemInput.SetValue("")
 			m.queryInput.Blur()
 			m.queryInput.Reset()
 			m.queryInput.SetValue("")
@@ -377,6 +415,24 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.pane = commentsPane
 		m.detail.GotoTop()
 		return m.withSelectedCommentsLoading()
+	case addWorkItemMsg:
+		m.workItemRunning = false
+		m.workItemErr = msg.err
+		if msg.err != nil {
+			m.status = ""
+			return m, nil
+		}
+		m.status = "Added " + formatMinutes(msg.draft.Minutes) + " to " + msg.issueID
+		m.workItemInput.Reset()
+		m.workItemInput.SetValue("")
+		delete(m.workItems, msg.issueID)
+		delete(m.activities, msg.issueID)
+		if m.currentIssueID() != msg.issueID {
+			return m, nil
+		}
+		m.pane = workItemsPane
+		m.detail.GotoTop()
+		return m.withSelectedWorkItemsLoading()
 	}
 	return m, nil
 }
@@ -484,6 +540,43 @@ func (m model) updateCommentInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m model) updateWorkItemInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.inputMode = modeNavigation
+		m.workItemInput.Blur()
+		m.workItemInput.Reset()
+		m.workItemInput.SetValue("")
+		m.workItemErr = nil
+		return m, nil
+	case "enter":
+		if m.workItemRunning {
+			return m, nil
+		}
+		draft, err := parseWorkItemInput(m.workItemInput.Value())
+		if err != nil {
+			m.workItemErr = err
+			return m, nil
+		}
+		issueID := m.currentIssueID()
+		if issueID == "" {
+			m.inputMode = modeNavigation
+			m.workItemInput.Blur()
+			m.workItemInput.SetValue("")
+			return m, nil
+		}
+		m.inputMode = modeNavigation
+		m.workItemInput.Blur()
+		m.workItemRunning = true
+		m.workItemErr = nil
+		m.status = "Adding work item..."
+		return m, m.addWorkItem(issueID, draft)
+	}
+	var cmd tea.Cmd
+	m.workItemInput, cmd = m.workItemInput.Update(msg)
+	return m, cmd
+}
+
 func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
@@ -503,6 +596,7 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.selected = 0
 		m.commandErr = nil
 		m.commentErr = nil
+		m.workItemErr = nil
 		return m.withIssueListLoading("Loading query...")
 	}
 	var cmd tea.Cmd
@@ -692,6 +786,17 @@ func (m model) addComment(issueID, text string) tea.Cmd {
 	return func() tea.Msg {
 		_, err := m.client.AddComment(m.ctx, issueID, text)
 		return addCommentMsg{issueID: issueID, text: text, err: err}
+	}
+}
+
+func (m model) addWorkItem(issueID string, draft workItemDraft) tea.Cmd {
+	return func() tea.Msg {
+		_, err := m.client.AddWorkItem(m.ctx, youtrack.AddWorkItemRequest{
+			IssueID: issueID,
+			Minutes: draft.Minutes,
+			Text:    draft.Text,
+		})
+		return addWorkItemMsg{issueID: issueID, draft: draft, err: err}
 	}
 }
 

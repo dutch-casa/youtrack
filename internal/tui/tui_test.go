@@ -21,6 +21,7 @@ type fakeClient struct {
 	attachments   []youtrack.Attachment
 	activities    []youtrack.Activity
 	workItems     []youtrack.WorkItem
+	workItemAdds  *[]workItemAdd
 	links         []youtrack.IssueLink
 	commands      *[]youtrack.ApplyCommandRequest
 	err           error
@@ -28,6 +29,12 @@ type fakeClient struct {
 
 type commentAdd struct {
 	issueID string
+	text    string
+}
+
+type workItemAdd struct {
+	issueID string
+	minutes int
 	text    string
 }
 
@@ -59,6 +66,13 @@ func (f fakeClient) Activities(ctx context.Context, opts youtrack.ActivityListOp
 
 func (f fakeClient) WorkItems(ctx context.Context, opts youtrack.WorkItemListOptions) ([]youtrack.WorkItem, error) {
 	return f.workItems, f.err
+}
+
+func (f fakeClient) AddWorkItem(ctx context.Context, req youtrack.AddWorkItemRequest) (youtrack.WorkItem, error) {
+	if f.workItemAdds != nil {
+		*f.workItemAdds = append(*f.workItemAdds, workItemAdd{issueID: req.IssueID, minutes: req.Minutes, text: req.Text})
+	}
+	return youtrack.WorkItem{ID: "w-added", Text: req.Text, Duration: youtrack.DurationValue{Minutes: req.Minutes}}, f.err
 }
 
 func (f fakeClient) IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error) {
@@ -482,6 +496,138 @@ func TestCommentResponseDoesNotReloadDifferentSelection(t *testing.T) {
 	}
 }
 
+func TestWorkItemModeAddsWorkItem(t *testing.T) {
+	var workItemAdds []workItemAdd
+	m := newModel(context.Background(), fakeClient{
+		workItems: []youtrack.WorkItem{{
+			Text:     "implementation",
+			Duration: youtrack.DurationValue{Minutes: 90},
+			Author:   youtrack.User{Login: "jane"},
+		}},
+		workItemAdds: &workItemAdds,
+	}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.activities["ABC-1"] = []youtrack.Activity{{Type: "stale"}}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(model)
+	if m.inputMode != modeWorkItem {
+		t.Fatalf("inputMode = %v, want modeWorkItem", m.inputMode)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("1h 30m implementation")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.workItemRunning {
+		t.Fatal("workItemRunning = false, want true")
+	}
+	if cmd == nil {
+		t.Fatal("add work item command = nil")
+	}
+
+	msg := cmd().(addWorkItemMsg)
+	if msg.issueID != "ABC-1" || msg.draft.Minutes != 90 || msg.draft.Text != "implementation" {
+		t.Fatalf("addWorkItemMsg = %#v", msg)
+	}
+	if len(workItemAdds) != 1 || workItemAdds[0].issueID != "ABC-1" || workItemAdds[0].minutes != 90 || workItemAdds[0].text != "implementation" {
+		t.Fatalf("workItemAdds = %#v", workItemAdds)
+	}
+
+	updated, reload := m.Update(msg)
+	m = updated.(model)
+	if m.workItemRunning {
+		t.Fatal("workItemRunning = true, want false")
+	}
+	if m.pane != workItemsPane {
+		t.Fatalf("pane = %v, want workItemsPane", m.pane)
+	}
+	if _, ok := m.activities["ABC-1"]; ok {
+		t.Fatalf("activities cache = %#v, want invalidated selected issue", m.activities)
+	}
+	if !strings.Contains(m.status, "Added 1h 30m to ABC-1") {
+		t.Fatalf("status = %q, want added work status", m.status)
+	}
+	if reload == nil {
+		t.Fatal("work item reload command = nil")
+	}
+
+	workItemsMsg := reload().(workItemsMsg)
+	if workItemsMsg.issueID != "ABC-1" || len(workItemsMsg.workItems) != 1 || workItemsMsg.workItems[0].Text != "implementation" {
+		t.Fatalf("workItemsMsg = %#v, want reloaded work items", workItemsMsg)
+	}
+}
+
+func TestWorkItemModeRejectsInvalidDuration(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("soon implementation")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("add work item command != nil for invalid duration")
+	}
+	if m.inputMode != modeWorkItem {
+		t.Fatalf("inputMode = %v, want prompt to stay focused", m.inputMode)
+	}
+	if m.workItemErr == nil {
+		t.Fatal("workItemErr = nil, want duration validation")
+	}
+}
+
+func TestWorkItemModeCancels(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("45m implementation")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+
+	if m.inputMode != modeNavigation || m.workItemInput.Value() != "" {
+		t.Fatalf("inputMode = %v, work item input = %q; want canceled", m.inputMode, m.workItemInput.Value())
+	}
+	if cmd != nil {
+		t.Fatal("cancel command != nil")
+	}
+}
+
+func TestWorkItemResponseDoesNotReloadDifferentSelection(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{
+		{IDReadable: "ABC-1", Summary: "One"},
+		{IDReadable: "ABC-2", Summary: "Two"},
+	}})
+	m = updated.(model)
+	m.selected = 1
+	m.workItems["ABC-1"] = []youtrack.WorkItem{{Text: "stale"}}
+	m.workItems["ABC-2"] = []youtrack.WorkItem{{Text: "current"}}
+
+	updated, cmd := m.Update(addWorkItemMsg{issueID: "ABC-1", draft: workItemDraft{Minutes: 45}})
+	m = updated.(model)
+	if cmd != nil {
+		t.Fatal("reload command != nil for non-selected work item")
+	}
+	if m.pane != detailsPane {
+		t.Fatalf("pane = %v, want unchanged detailsPane", m.pane)
+	}
+	if _, ok := m.workItems["ABC-1"]; ok {
+		t.Fatalf("work items cache = %#v, want stale target issue invalidated", m.workItems)
+	}
+	if got := m.workItems["ABC-2"]; len(got) != 1 || got[0].Text != "current" {
+		t.Fatalf("current issue work items = %#v, want untouched current cache", got)
+	}
+}
+
 func TestInputModeIsExclusive(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
@@ -516,6 +662,22 @@ func TestInputModeIsExclusive(t *testing.T) {
 	}
 	if m.commentInput.Value() != ":" {
 		t.Fatalf("comment input = %q, want colon typed into comment prompt", m.commentInput.Value())
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'w'}})
+	m = updated.(model)
+	if m.inputMode != modeWorkItem {
+		t.Fatalf("inputMode = %v, want modeWorkItem", m.inputMode)
+	}
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	if m.inputMode != modeWorkItem {
+		t.Fatalf("inputMode = %v, want work item prompt to keep focus", m.inputMode)
+	}
+	if m.workItemInput.Value() != "/" {
+		t.Fatalf("work item input = %q, want slash typed into work item prompt", m.workItemInput.Value())
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
@@ -831,6 +993,56 @@ func TestIssueListRendersStateSignal(t *testing.T) {
 	}
 }
 
+func TestParseWorkItemInput(t *testing.T) {
+	tests := []struct {
+		input       string
+		wantMinutes int
+		wantText    string
+	}{
+		{input: "45m implementation", wantMinutes: 45, wantText: "implementation"},
+		{input: "1h implementation", wantMinutes: 60, wantText: "implementation"},
+		{input: "1h30m implementation", wantMinutes: 90, wantText: "implementation"},
+		{input: "1h 30m implementation notes", wantMinutes: 90, wantText: "implementation notes"},
+		{input: "2H 5M", wantMinutes: 125, wantText: ""},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.input, func(t *testing.T) {
+			got, err := parseWorkItemInput(tt.input)
+			if err != nil {
+				t.Fatalf("parseWorkItemInput() error = %v", err)
+			}
+			if got.Minutes != tt.wantMinutes || got.Text != tt.wantText {
+				t.Fatalf("parseWorkItemInput() = %#v, want minutes %d text %q", got, tt.wantMinutes, tt.wantText)
+			}
+		})
+	}
+}
+
+func TestParseWorkItemInputRejectsInvalidDuration(t *testing.T) {
+	for _, input := range []string{"", "implementation", "45 implementation", "1d implementation", "0m implementation", "1hsoon"} {
+		t.Run(input, func(t *testing.T) {
+			if _, err := parseWorkItemInput(input); err == nil {
+				t.Fatalf("parseWorkItemInput(%q) error = nil, want validation", input)
+			}
+		})
+	}
+}
+
+func TestParseWorkItemInputDurationProperty(t *testing.T) {
+	property := func(hours, minutes uint8) bool {
+		if hours == 0 && minutes == 0 {
+			return true
+		}
+		input := strconv.Itoa(int(hours)) + "h " + strconv.Itoa(int(minutes)) + "m work"
+		draft, err := parseWorkItemInput(input)
+		return err == nil && draft.Minutes == int(hours)*60+int(minutes) && draft.Text == "work"
+	}
+	if err := quick.Check(property, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
 func TestIssueCustomFieldsStringValueProperty(t *testing.T) {
 	property := func(name, value string) bool {
 		name = strings.TrimSpace(name)
@@ -871,5 +1083,32 @@ func FuzzIssueCustomFields(f *testing.F) {
 		_ = issueCustomFields(issue)
 		_ = issueMetadataLine(issue)
 		_ = issueListLine(issue)
+	})
+}
+
+func FuzzParseWorkItemInput(f *testing.F) {
+	for _, seed := range []string{
+		"45m implementation",
+		"1h implementation",
+		"1h 30m implementation",
+		"1h30m implementation",
+		"implementation",
+		"45 implementation",
+		"0m",
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, input string) {
+		draft, err := parseWorkItemInput(input)
+		if err != nil {
+			return
+		}
+		if draft.Minutes <= 0 {
+			t.Fatalf("parseWorkItemInput(%q) minutes = %d, want positive", input, draft.Minutes)
+		}
+		if strings.Contains(draft.Text, "\n") {
+			t.Fatalf("parseWorkItemInput(%q) text contains newline: %q", input, draft.Text)
+		}
 	})
 }

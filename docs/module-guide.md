@@ -28,6 +28,7 @@ See also:
 - [0024 TUI Field Projection](adr/0024-tui-field-projection.md)
 - [0025 TUI Quick Comments](adr/0025-tui-quick-comments.md)
 - [0026 TUI Work Item Browsing](adr/0026-tui-work-item-browsing.md)
+- [0027 TUI Quick Work Items](adr/0027-tui-quick-work-items.md)
 
 ## `internal/auth`
 
