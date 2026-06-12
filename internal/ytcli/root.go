@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"net/http"
 	"os"
 	"path/filepath"
 	"strings"
@@ -761,6 +762,7 @@ func (a *app) rawCommand() *cobra.Command {
 	var body string
 	var bodyFile string
 	var bodyStdin bool
+	var headers []string
 	cmd := &cobra.Command{
 		Use:   "raw PATH",
 		Short: "Call a YouTrack REST path and print the raw response",
@@ -780,6 +782,10 @@ func (a *app) rawCommand() *cobra.Command {
 			if bodySet {
 				reader = strings.NewReader(resolvedBody)
 			}
+			parsedHeaders, err := parseRawHeaders(headers)
+			if err != nil {
+				return err
+			}
 			client, err := a.client()
 			if err != nil {
 				return err
@@ -787,6 +793,7 @@ func (a *app) rawCommand() *cobra.Command {
 			data, err := client.Raw(cmd.Context(), youtrack.RawRequest{
 				Method:      method,
 				Path:        args[0],
+				Headers:     parsedHeaders,
 				ContentType: contentType,
 				Body:        reader,
 			})
@@ -802,7 +809,52 @@ func (a *app) rawCommand() *cobra.Command {
 	cmd.Flags().StringVar(&body, "body", "", "request body")
 	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read request body from file")
 	cmd.Flags().BoolVar(&bodyStdin, "body-stdin", false, "read request body from stdin")
+	cmd.Flags().StringArrayVarP(&headers, "header", "H", nil, "request header as 'Name: value'; repeat for multiple headers")
 	return cmd
+}
+
+func parseRawHeaders(values []string) (http.Header, error) {
+	headers := make(http.Header)
+	for _, raw := range values {
+		name, value, ok := strings.Cut(raw, ":")
+		if !ok {
+			return nil, fmt.Errorf("raw header %q must be in 'Name: value' form", raw)
+		}
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return nil, errors.New("raw header name is required")
+		}
+		if strings.EqualFold(name, "Authorization") {
+			return nil, errors.New("raw header Authorization is managed by yt auth")
+		}
+		if strings.EqualFold(name, "Content-Type") {
+			return nil, errors.New("use --content-type for Content-Type")
+		}
+		if !validHTTPHeaderName(name) {
+			return nil, fmt.Errorf("raw header name %q is invalid", name)
+		}
+		headers.Add(name, strings.TrimSpace(value))
+	}
+	return headers, nil
+}
+
+func validHTTPHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+		switch c {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {

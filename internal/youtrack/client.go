@@ -228,6 +228,7 @@ type IssueLinkListOptions struct {
 type RawRequest struct {
 	Method      string
 	Path        string
+	Headers     http.Header
 	ContentType string
 	Body        io.Reader
 }
@@ -568,6 +569,9 @@ func (c *Client) Raw(ctx context.Context, raw RawRequest) (json.RawMessage, erro
 	if err != nil {
 		return nil, err
 	}
+	if err := applyRawHeaders(req, raw.Headers); err != nil {
+		return nil, err
+	}
 	if raw.Body != nil {
 		contentType := raw.ContentType
 		if contentType == "" {
@@ -588,6 +592,50 @@ func (c *Client) Raw(ctx context.Context, raw RawRequest) (json.RawMessage, erro
 		return nil, decodeAPIError(resp.StatusCode, data)
 	}
 	return json.RawMessage(data), nil
+}
+
+func applyRawHeaders(req *http.Request, headers http.Header) error {
+	for name, values := range headers {
+		name = strings.TrimSpace(name)
+		if name == "" {
+			return errors.New("raw request header name is required")
+		}
+		if strings.EqualFold(name, "Authorization") {
+			return errors.New("raw request authorization header is managed by credentials")
+		}
+		if strings.EqualFold(name, "Content-Type") {
+			return errors.New("raw request content-type header must use ContentType")
+		}
+		if !validHTTPHeaderName(name) {
+			return fmt.Errorf("raw request header name %q is invalid", name)
+		}
+
+		canonical := http.CanonicalHeaderKey(name)
+		req.Header.Del(canonical)
+		for _, value := range values {
+			req.Header.Add(canonical, value)
+		}
+	}
+	return nil
+}
+
+func validHTTPHeaderName(name string) bool {
+	if name == "" {
+		return false
+	}
+	for i := 0; i < len(name); i++ {
+		c := name[i]
+		if c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' {
+			continue
+		}
+		switch c {
+		case '!', '#', '$', '%', '&', '\'', '*', '+', '-', '.', '^', '_', '`', '|', '~':
+			continue
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 func (c *Client) get(ctx context.Context, path string, values url.Values, dst any) error {

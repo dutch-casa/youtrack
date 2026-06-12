@@ -420,6 +420,38 @@ func TestRawRequestContentType(t *testing.T) {
 	}
 }
 
+func TestRawRequestHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:test" {
+			t.Fatalf("Authorization = %q, want configured bearer token", got)
+		}
+		if got := r.Header.Get("Accept"); got != "application/xml" {
+			t.Fatalf("Accept = %q, want application/xml", got)
+		}
+		if got := r.Header.Get("X-Youtrack-Trace"); got != "agent-run-1" {
+			t.Fatalf("X-YouTrack-Trace = %q, want agent-run-1", got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	data, err := client.Raw(context.Background(), RawRequest{
+		Method: http.MethodGet,
+		Path:   "/api/custom",
+		Headers: http.Header{
+			"Accept":           {"application/xml"},
+			"X-YouTrack-Trace": {"agent-run-1"},
+		},
+	})
+	if err != nil {
+		t.Fatalf("Raw() error = %v", err)
+	}
+	if string(data) != `{"ok":true}` {
+		t.Fatalf("Raw() = %s, want raw response", data)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -484,6 +516,27 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.Raw(context.Background(), RawRequest{Method: http.MethodGet}); err == nil {
 		t.Fatal("Raw() error = nil, want path validation")
+	}
+	if _, err := client.Raw(context.Background(), RawRequest{
+		Method:  http.MethodGet,
+		Path:    "/api/issues",
+		Headers: http.Header{"Authorization": {"Bearer bad"}},
+	}); err == nil {
+		t.Fatal("Raw() error = nil, want managed authorization header validation")
+	}
+	if _, err := client.Raw(context.Background(), RawRequest{
+		Method:  http.MethodGet,
+		Path:    "/api/issues",
+		Headers: http.Header{"Content-Type": {"text/plain"}},
+	}); err == nil {
+		t.Fatal("Raw() error = nil, want managed content type header validation")
+	}
+	if _, err := client.Raw(context.Background(), RawRequest{
+		Method:  http.MethodGet,
+		Path:    "/api/issues",
+		Headers: http.Header{"Bad Header": {"value"}},
+	}); err == nil {
+		t.Fatal("Raw() error = nil, want header name validation")
 	}
 }
 

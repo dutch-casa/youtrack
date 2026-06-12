@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/quick"
 )
 
 func TestHelpIsAvailableWithoutAuth(t *testing.T) {
@@ -346,6 +347,109 @@ func TestRawSendsCustomContentType(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
+}
+
+func TestRawSendsCustomHeaders(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:test" {
+			t.Fatalf("Authorization = %q, want configured bearer token", got)
+		}
+		if got := r.Header.Get("Accept"); got != "application/xml" {
+			t.Fatalf("Accept = %q, want custom accept header", got)
+		}
+		if got := r.Header.Get("X-Youtrack-Trace"); got != "agent-run-1" {
+			t.Fatalf("X-YouTrack-Trace = %q, want agent-run-1", got)
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/custom", "-H", "Accept: application/xml", "--header", "X-YouTrack-Trace: agent-run-1",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
+func TestRawRejectsManagedHeadersBeforeAuth(t *testing.T) {
+	tests := []struct {
+		name string
+		args []string
+		want string
+	}{
+		{
+			name: "authorization",
+			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "raw", "/api/issues", "-H", "Authorization: Bearer bad"},
+			want: "managed by yt auth",
+		},
+		{
+			name: "content type",
+			args: []string{"--config", filepath.Join(t.TempDir(), "missing.json"), "raw", "/api/issues", "-H", "Content-Type: text/plain"},
+			want: "use --content-type",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			err := Execute(context.Background(), tt.args, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+			if err == nil {
+				t.Fatal("Execute() error = nil, want header validation")
+			}
+			if !strings.Contains(err.Error(), tt.want) {
+				t.Fatalf("Execute() error = %q, want %q", err.Error(), tt.want)
+			}
+			if strings.Contains(err.Error(), "yt auth login") {
+				t.Fatalf("Execute() error = %q, parsed header after auth", err.Error())
+			}
+		})
+	}
+}
+
+func TestParseRawHeadersProperties(t *testing.T) {
+	property := func(value string) bool {
+		headers, err := parseRawHeaders([]string{"X-Agent-Trace: " + value})
+		return err == nil && headers.Get("X-Agent-Trace") == strings.TrimSpace(value)
+	}
+	if err := quick.Check(property, nil); err != nil {
+		t.Fatal(err)
+	}
+}
+
+func FuzzParseRawHeaders(f *testing.F) {
+	for _, seed := range []string{
+		"X-Agent-Trace: run-1",
+		"Accept: application/xml",
+		"Authorization: Bearer bad",
+		"Content-Type: text/plain",
+		"missing-colon",
+		": empty-name",
+		"X-Colon: value:with:colon",
+	} {
+		f.Add(seed)
+	}
+
+	f.Fuzz(func(t *testing.T, raw string) {
+		headers, err := parseRawHeaders([]string{raw})
+		name, _, hasColon := strings.Cut(raw, ":")
+		name = strings.TrimSpace(name)
+		managed := strings.EqualFold(name, "Authorization") || strings.EqualFold(name, "Content-Type")
+		if !hasColon || name == "" || managed || !validHTTPHeaderName(name) {
+			if err == nil {
+				t.Fatalf("parseRawHeaders(%q) succeeded for invalid or managed header %#v", raw, headers)
+			}
+			return
+		}
+		if err != nil {
+			t.Fatalf("parseRawHeaders(%q) error = %v", raw, err)
+		}
+		if len(headers) != 1 {
+			t.Fatalf("parseRawHeaders(%q) produced %d headers, want 1", raw, len(headers))
+		}
+	})
 }
 
 func TestRawRejectsMultipleBodySources(t *testing.T) {
