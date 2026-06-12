@@ -3,6 +3,7 @@ package ytcli
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -44,6 +45,16 @@ func TestAuthLoginStatusLogout(t *testing.T) {
 	if err != nil {
 		t.Fatalf("auth login error = %v", err)
 	}
+	var loginResult struct {
+		Saved      bool   `json:"saved"`
+		ConfigPath string `json:"configPath"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &loginResult); err != nil {
+		t.Fatalf("auth login output is not JSON: %v; output %q", err, out.String())
+	}
+	if !loginResult.Saved || loginResult.ConfigPath != config {
+		t.Fatalf("auth login output = %#v, want saved config path", loginResult)
+	}
 
 	out.Reset()
 	err = Execute(context.Background(), []string{"--config", config, "auth", "status"}, strings.NewReader(""), &out, &bytes.Buffer{})
@@ -61,6 +72,15 @@ func TestAuthLoginStatusLogout(t *testing.T) {
 	err = Execute(context.Background(), []string{"--config", config, "auth", "logout"}, strings.NewReader(""), &out, &bytes.Buffer{})
 	if err != nil {
 		t.Fatalf("auth logout error = %v", err)
+	}
+	var logoutResult struct {
+		Removed bool `json:"removed"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &logoutResult); err != nil {
+		t.Fatalf("auth logout output is not JSON: %v; output %q", err, out.String())
+	}
+	if !logoutResult.Removed {
+		t.Fatalf("auth logout output = %#v, want removed true", logoutResult)
 	}
 }
 

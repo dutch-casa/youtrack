@@ -106,8 +106,10 @@ func (a *app) authCommand() *cobra.Command {
 			if err := a.store.Save(creds); err != nil {
 				return err
 			}
-			_, err := fmt.Fprintf(a.out, "saved credentials to %s\n", a.configPath)
-			return err
+			return output.Write(a.out, a.format, map[string]any{
+				"saved":      true,
+				"configPath": a.configPath,
+			})
 		},
 	}
 	login.Flags().StringVar(&baseURL, "url", "", "YouTrack base URL, for example https://example.youtrack.cloud")
@@ -120,8 +122,7 @@ func (a *app) authCommand() *cobra.Command {
 			if err := a.store.Delete(); err != nil {
 				return err
 			}
-			_, err := fmt.Fprintln(a.out, "removed saved credentials")
-			return err
+			return output.Write(a.out, a.format, map[string]any{"removed": true})
 		},
 	}
 
