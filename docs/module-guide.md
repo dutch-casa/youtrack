@@ -12,6 +12,7 @@ See also:
 - [0008 Typed Attachments](adr/0008-typed-attachments.md)
 - [0009 TUI Evidence Browsing](adr/0009-tui-evidence-browsing.md)
 - [0010 Typed Activity History](adr/0010-typed-activity-history.md)
+- [0011 Typed Link Browsing](adr/0011-typed-link-browsing.md)
 
 ## `internal/auth`
 
@@ -23,7 +24,7 @@ Role: Callers ask for usable credentials. The module decides whether to use envi
 
 Secret: This module hides the YouTrack REST API wire shape.
 
-Role: Callers use typed operations for common issue, comment, attachment, activity-history, and user actions. The module owns endpoint paths, query fields, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
+Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, and user actions. The module owns endpoint paths, query fields, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
 
 ## `internal/ytcli`
 

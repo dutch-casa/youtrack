@@ -70,6 +70,7 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.workItemsCommand())
 	cmd.AddCommand(a.attachmentsCommand())
 	cmd.AddCommand(a.activitiesCommand())
+	cmd.AddCommand(a.linksCommand())
 	cmd.AddCommand(a.commandsCommand())
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
@@ -657,6 +658,42 @@ func (a *app) activitiesCommand() *cobra.Command {
 		Use:     "activities",
 		Aliases: []string{"activity", "history"},
 		Short:   "Work with issue activity history",
+	}
+	cmd.AddCommand(list)
+	return cmd
+}
+
+func (a *app) linksCommand() *cobra.Command {
+	var top int
+	var skip int
+
+	list := &cobra.Command{
+		Use:   "list ISSUE",
+		Short: "List issue links",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			links, err := client.IssueLinks(cmd.Context(), youtrack.IssueLinkListOptions{
+				IssueID: args[0],
+				Top:     top,
+				Skip:    skip,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, links)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum link buckets to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of link buckets to skip")
+
+	cmd := &cobra.Command{
+		Use:     "links",
+		Aliases: []string{"link"},
+		Short:   "Work with issue links",
 	}
 	cmd.AddCommand(list)
 	return cmd

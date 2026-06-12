@@ -45,6 +45,7 @@ yt attachments list ABC-123
 yt attachments add ABC-123 --file ./screenshot.png
 yt activities list ABC-123
 yt history list ABC-123 --category CommentsCategory --category CustomFieldCategory
+yt links list ABC-123
 yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'
 yt raw /api/admin/projects
 ```

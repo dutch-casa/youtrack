@@ -75,6 +75,18 @@ func writeTable(w io.Writer, value any) error {
 		for _, activity := range rows {
 			fmt.Fprintf(tw, "%d\t%s\t%s\t%s\n", activity.Timestamp, displayName(activity.Author), activity.Type, activity.Summary())
 		}
+	case []youtrack.IssueLink:
+		fmt.Fprintln(tw, "TYPE\tDIRECTION\tISSUE\tSUMMARY")
+		for _, link := range rows {
+			issues := linkedIssues(link)
+			if len(issues) == 0 {
+				fmt.Fprintf(tw, "%s\t%s\t\t\n", link.LinkType.Name, linkDirection(link))
+				continue
+			}
+			for _, issue := range issues {
+				fmt.Fprintf(tw, "%s\t%s\t%s\t%s\n", link.LinkType.Name, linkDirection(link), issue.IDReadable, issue.Summary)
+			}
+		}
 	case youtrack.CommandResult:
 		fmt.Fprintln(tw, "QUERY\tISSUES")
 		fmt.Fprintf(tw, "%s\t%d\n", rows.Query, len(rows.Issues))
@@ -92,4 +104,29 @@ func displayName(user youtrack.User) string {
 		return user.FullName
 	}
 	return user.Name
+}
+
+func linkedIssues(link youtrack.IssueLink) []youtrack.Issue {
+	if len(link.Trimmed) > 0 {
+		return link.Trimmed
+	}
+	return link.Issues
+}
+
+func linkDirection(link youtrack.IssueLink) string {
+	switch link.Direction {
+	case "OUTWARD":
+		if link.LinkType.SourceToTarget != "" {
+			return link.LinkType.SourceToTarget
+		}
+	case "INWARD":
+		if link.LinkType.TargetToSource != "" {
+			return link.LinkType.TargetToSource
+		}
+	case "BOTH":
+		if link.LinkType.SourceToTarget != "" {
+			return link.LinkType.SourceToTarget
+		}
+	}
+	return link.Direction
 }

@@ -123,6 +123,24 @@ type ActivityCategory struct {
 	ID string `json:"id,omitempty"`
 }
 
+type IssueLink struct {
+	ID        string   `json:"id"`
+	Direction string   `json:"direction,omitempty"`
+	LinkType  LinkType `json:"linkType,omitempty"`
+	Issues    []Issue  `json:"issues,omitempty"`
+	Trimmed   []Issue  `json:"trimmedIssues,omitempty"`
+}
+
+type LinkType struct {
+	ID             string `json:"id,omitempty"`
+	Name           string `json:"name,omitempty"`
+	LocalizedName  string `json:"localizedName,omitempty"`
+	SourceToTarget string `json:"sourceToTarget,omitempty"`
+	TargetToSource string `json:"targetToSource,omitempty"`
+	Directed       bool   `json:"directed,omitempty"`
+	Aggregation    bool   `json:"aggregation,omitempty"`
+}
+
 type IssueListOptions struct {
 	Query string
 	Top   int
@@ -199,6 +217,12 @@ type ActivityListOptions struct {
 	StartMs    int64
 	EndMs      int64
 	Author     string
+}
+
+type IssueLinkListOptions struct {
+	IssueID string
+	Top     int
+	Skip    int
 }
 
 type APIError struct {
@@ -462,6 +486,18 @@ func (c *Client) Activities(ctx context.Context, opts ActivityListOptions) ([]Ac
 	return activities, err
 }
 
+func (c *Client) IssueLinks(ctx context.Context, opts IssueLinkListOptions) ([]IssueLink, error) {
+	if strings.TrimSpace(opts.IssueID) == "" {
+		return nil, errors.New("issue id is required")
+	}
+	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
+	values.Set("fields", issueLinkFields)
+
+	var links []IssueLink
+	err := c.get(ctx, "/api/issues/"+url.PathEscape(opts.IssueID)+"/links", values, &links)
+	return links, err
+}
+
 func DefaultActivityCategories() []string {
 	return append([]string(nil), defaultActivityCategories...)
 }
@@ -638,6 +674,7 @@ const userFields = "id,login,name,fullName,email,online,banned"
 const workItemFields = "id,text,date,duration(id,minutes,presentation),type(id,name),author(id,login,name,fullName,email),creator(id,login,name,fullName,email)"
 const attachmentFields = "id,name,author(id,login,name,fullName,email),created,updated,size,extension,mimeType,metaData,url,thumbnailURL"
 const activityFields = "id,$type,author(id,login,name,fullName,email),timestamp,target(id,text,name,summary,idReadable),targetMember,field(name),added(id,name,login,text,presentation),removed(id,name,login,text,presentation),category(id)"
+const issueLinkFields = "id,direction,linkType(id,name,localizedName,sourceToTarget,targetToSource,directed,aggregation),issues(id,idReadable,summary,resolved,project(shortName,name)),trimmedIssues(id,idReadable,summary,resolved,project(shortName,name))"
 
 var defaultActivityCategories = []string{
 	"IssueCreatedCategory",

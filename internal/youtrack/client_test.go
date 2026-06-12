@@ -355,6 +355,34 @@ func TestActivitiesRequestShape(t *testing.T) {
 	}
 }
 
+func TestIssueLinksRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/links" {
+			t.Fatalf("path = %s, want issue links path", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$top"); got != "10" {
+			t.Fatalf("$top = %q, want 10", got)
+		}
+		if fields := r.URL.Query().Get("fields"); !strings.Contains(fields, "linkType") || !strings.Contains(fields, "trimmedIssues") {
+			t.Fatalf("fields = %q, want issue link fields", fields)
+		}
+		_, _ = w.Write([]byte(`[{"id":"80-1s","direction":"OUTWARD","linkType":{"name":"Depend","sourceToTarget":"is required for","targetToSource":"depends on","directed":true},"issues":[{"id":"2-44","idReadable":"ABC-2","summary":"Linked issue"}]}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	links, err := client.IssueLinks(context.Background(), IssueLinkListOptions{
+		IssueID: "ABC-1",
+		Top:     10,
+	})
+	if err != nil {
+		t.Fatalf("IssueLinks() error = %v", err)
+	}
+	if len(links) != 1 || links[0].Issues[0].IDReadable != "ABC-2" {
+		t.Fatalf("IssueLinks() = %#v", links)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -410,6 +438,9 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.Activities(context.Background(), ActivityListOptions{IssueID: "ABC-1"}); err == nil {
 		t.Fatal("Activities() error = nil, want category validation")
+	}
+	if _, err := client.IssueLinks(context.Background(), IssueLinkListOptions{}); err == nil {
+		t.Fatal("IssueLinks() error = nil, want issue id validation")
 	}
 }
 
