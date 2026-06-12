@@ -6,6 +6,7 @@ See also:
 - [0002 Agent-First Command Contract](adr/0002-agent-first-command-contract.md)
 - [0003 Permanent-Token Authentication](adr/0003-permanent-token-auth.md)
 - [0004 Charm TUI as Optional Human Mode](adr/0004-charm-tui-as-optional-human-mode.md)
+- [0005 Command API as Workflow Bridge](adr/0005-command-api-as-workflow-bridge.md)
 
 ## `internal/auth`
 
