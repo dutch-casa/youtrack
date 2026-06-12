@@ -103,6 +103,8 @@ Use `yt capabilities` or `youtrack capabilities` as the machine-readable contrac
 
 `yt commands apply` is the high-leverage bridge to YouTrack's own command language. Use it for issue operations that humans normally perform through command input in the UI, including assignment, state changes, tags, links, watchers, and similar workflow actions, subject to the token's permissions.
 
+`yt helpdesk` is intentionally issue-backed. It lists projects whose project type is Helpdesk and lists tickets through the public issue search surface with a `project:` query. For Helpdesk-specific channel or workflow endpoints that are not exposed as typed commands, use `yt raw` against the documented REST endpoint or an app-provided custom endpoint.
+
 For long generated text, description and comment commands accept explicit file/stdin sources such as `--description-file`, `--description-stdin`, `--text-file`, `--text-stdin`, `--comment-file`, and `--comment-stdin`.
 
 For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large bodies. Raw requests default body content to `application/json`; use `--content-type` when a long-tail endpoint expects a different media type. Use repeated `--header` or `-H` flags for endpoint-specific headers and repeated `--query` or `-q` flags for query parameters. Raw stdout is byte-exact and does not add a newline. Use `--output-file` or `-o` for downloads or binary responses. `Authorization` remains managed by auth, and `Content-Type` remains managed by `--content-type`.

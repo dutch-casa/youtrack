@@ -43,6 +43,7 @@ See also:
 - [0039 Dual Command Name Registration](adr/0039-dual-command-name-registration.md)
 - [0040 Repository Agent Working Contract](adr/0040-repository-agent-working-contract.md)
 - [0041 Terminal Image Attachment Previews](adr/0041-terminal-image-attachment-previews.md)
+- [0042 Issue-Backed Helpdesk Surface](adr/0042-issue-backed-helpdesk-surface.md)
 
 ## `internal/auth`
 

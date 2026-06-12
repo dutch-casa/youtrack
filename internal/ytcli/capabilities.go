@@ -107,7 +107,7 @@ func newCapabilitiesDocument() capabilitiesDocument {
 			{Command: "yt users list", Purpose: "List users.", Mutates: false},
 			{Command: "yt articles list/show", Purpose: "Browse knowledge base articles.", Mutates: false},
 			{Command: "yt agiles list/sprints", Purpose: "Browse agile boards and sprints.", Mutates: false},
-			{Command: "yt helpdesk projects/tickets", Purpose: "Browse help desk projects and tickets.", Mutates: false},
+			{Command: "yt helpdesk projects/tickets", Purpose: "Browse help desk projects and issue-backed tickets through public project/issue resources.", Mutates: false},
 			{Command: "yt issues list/show", Purpose: "Search, filter, and inspect issues.", Mutates: false},
 			{Command: "yt issues create/update", Purpose: "Create issues and update stable issue fields.", Mutates: true},
 			{Command: "yt comments list/add", Purpose: "Read and add issue comments.", Mutates: true},
@@ -231,7 +231,7 @@ func newCommandReference() []capabilityCommandSpec {
 		listSpec("yt agiles list", nil, "List agile boards.", []string{"yt agiles list"}),
 		listSpec("yt agiles sprints AGILE", nil, "List sprints for an agile board.", []string{"yt agiles sprints 120-1"}),
 		listSpec("yt helpdesk projects", nil, "List help desk projects.", []string{"yt helpdesk projects"}),
-		listSpec("yt helpdesk tickets PROJECT", []capabilityFlag{valueFlag("query", "q", "QUERY", "", "Additional YouTrack ticket query")}, "List help desk tickets in a project.", []string{"yt helpdesk tickets SUPPORT --query '#Unresolved'"}),
+		listSpec("yt helpdesk tickets PROJECT", []capabilityFlag{valueFlag("query", "q", "QUERY", "", "Additional YouTrack issue query")}, "List issue-backed help desk tickets in a project. Use yt raw for Helpdesk-specific endpoints or app-provided custom endpoints.", []string{"yt helpdesk tickets SUPPORT --query '#Unresolved'"}),
 		listSpec("yt issues list", []capabilityFlag{valueFlag("query", "q", "QUERY", "", "YouTrack issue query")}, "Search and list issues.", []string{"yt issues list --query 'project: ABC #Unresolved' --top 20"}),
 		{
 			Command:      "yt issues show ISSUE",

@@ -338,7 +338,7 @@ func (a *app) helpdeskCommand() *cobra.Command {
 	var ticketSkip int
 	tickets := &cobra.Command{
 		Use:   "tickets PROJECT",
-		Short: "List helpdesk tickets in a project",
+		Short: "List issue-backed helpdesk tickets in a project",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			if err := validatePageFlags(ticketTop, ticketSkip); err != nil {
@@ -363,7 +363,7 @@ func (a *app) helpdeskCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:     "helpdesk",
 		Aliases: []string{"help-desk", "tickets"},
-		Short:   "Work with helpdesk projects and tickets",
+		Short:   "Work with helpdesk projects and issue-backed tickets",
 	}
 	cmd.AddCommand(projects, tickets)
 	return cmd
