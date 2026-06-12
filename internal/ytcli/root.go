@@ -1,6 +1,7 @@
 package ytcli
 
 import (
+	"bufio"
 	"bytes"
 	"context"
 	"errors"
@@ -103,7 +104,53 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
 	cmd.AddCommand(a.upgradeCommand())
+	cmd.AddCommand(a.uninstallCommand())
 	return cmd
+}
+
+type binaryLocation struct {
+	binDir string
+	name   string
+	target string
+	alias  string
+}
+
+func resolveBinaryLocation(binDir, name string) (binaryLocation, error) {
+	if binDir == "" || name == "" {
+		executable, err := os.Executable()
+		if err != nil {
+			return binaryLocation{}, fmt.Errorf("current executable: %w", err)
+		}
+		if binDir == "" {
+			binDir = filepath.Dir(executable)
+		}
+		if name == "" {
+			name = filepath.Base(executable)
+		}
+	}
+	if name == "" || strings.ContainsAny(name, `/\`) {
+		return binaryLocation{}, errors.New("--name must be a file name, not a path")
+	}
+	loc := binaryLocation{
+		binDir: binDir,
+		name:   name,
+		target: filepath.Join(binDir, name),
+	}
+	if alias, ok := counterpartBinaryName(name); ok {
+		loc.alias = filepath.Join(binDir, alias)
+	}
+	return loc, nil
+}
+
+func counterpartBinaryName(name string) (string, bool) {
+	switch name {
+	case "yt":
+		return "youtrack", true
+	case "youtrack":
+		return "yt", true
+	default:
+		return "", false
+	}
 }
 
 func (a *app) authCommand() *cobra.Command {
@@ -116,12 +163,13 @@ func (a *app) authCommand() *cobra.Command {
 		Use:   "login",
 		Short: "Save YouTrack URL and permanent token",
 		RunE: func(cmd *cobra.Command, args []string) error {
+			reader := bufio.NewReader(a.in)
 			if baseURL == "" || token == "" {
-				if !auth.CanPrompt(a.in) {
+				if !canPrompt(a.in) {
 					return errors.New("non-interactive login requires --url and --token")
 				}
 				if baseURL == "" {
-					promptedURL, err := auth.PromptURL(a.in, a.errOut)
+					promptedURL, err := auth.PromptURLFromReader(reader, a.errOut)
 					if err != nil {
 						return err
 					}
@@ -133,7 +181,7 @@ func (a *app) authCommand() *cobra.Command {
 					}
 				}
 				if token == "" {
-					promptedToken, err := auth.PromptToken(a.in, a.errOut)
+					promptedToken, err := auth.PromptTokenFromReader(a.in, reader, a.errOut)
 					if err != nil {
 						return err
 					}
@@ -1123,33 +1171,22 @@ func (a *app) upgradeCommand() *cobra.Command {
 		Use:   "upgrade",
 		Short: "Update this CLI binary with the public installer",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			if binDir == "" || name == "" {
-				executable, err := os.Executable()
-				if err != nil {
-					return fmt.Errorf("current executable: %w", err)
-				}
-				if binDir == "" {
-					binDir = filepath.Dir(executable)
-				}
-				if name == "" {
-					name = filepath.Base(executable)
-				}
-			}
-			if name == "" || strings.ContainsAny(name, `/\`) {
-				return errors.New("--name must be a file name, not a path")
+			loc, err := resolveBinaryLocation(binDir, name)
+			if err != nil {
+				return err
 			}
 
 			script, err := downloadInstaller(cmd.Context(), installerURL)
 			if err != nil {
 				return err
 			}
-			fmt.Fprintf(a.errOut, "Updating %s\n", filepath.Join(binDir, name))
-			if err := runInstallScript(cmd.Context(), script, binDir, name, a.errOut, a.errOut); err != nil {
+			fmt.Fprintf(a.errOut, "Updating %s\n", loc.target)
+			if err := runInstallScript(cmd.Context(), script, loc.binDir, loc.name, a.errOut, a.errOut); err != nil {
 				return err
 			}
 			return output.Write(a.out, a.format, map[string]any{
 				"updated": true,
-				"path":    filepath.Join(binDir, name),
+				"path":    loc.target,
 			})
 		},
 	}
@@ -1157,6 +1194,65 @@ func (a *app) upgradeCommand() *cobra.Command {
 	cmd.Flags().StringVar(&name, "name", "", "installed binary name; defaults to this executable's file name")
 	cmd.Flags().StringVar(&installerURL, "installer-url", defaultInstallerURL, "installer script URL")
 	return cmd
+}
+
+func (a *app) uninstallCommand() *cobra.Command {
+	var binDir string
+	var name string
+
+	cmd := &cobra.Command{
+		Use:   "uninstall",
+		Short: "Remove this CLI binary, paired alias, and saved auth config",
+		RunE: func(cmd *cobra.Command, args []string) error {
+			loc, err := resolveBinaryLocation(binDir, name)
+			if err != nil {
+				return err
+			}
+			fmt.Fprintf(a.errOut, "Removing %s\n", loc.target)
+			if loc.alias != "" {
+				fmt.Fprintf(a.errOut, "Removing alias %s\n", loc.alias)
+			}
+			var errs []error
+			if err := removeFileIfExists(loc.target); err != nil {
+				errs = append(errs, err)
+			}
+			if loc.alias != "" {
+				if err := removeFileIfExists(loc.alias); err != nil {
+					errs = append(errs, err)
+				}
+			}
+			if err := a.store.Delete(); err != nil {
+				errs = append(errs, err)
+			}
+			if len(errs) > 0 {
+				return errors.Join(errs...)
+			}
+			result := map[string]any{
+				"removed":       true,
+				"path":          loc.target,
+				"configRemoved": true,
+				"configPath":    a.configPath,
+			}
+			if loc.alias != "" {
+				result["aliasRemoved"] = true
+				result["aliasPath"] = loc.alias
+			}
+			return output.Write(a.out, a.format, result)
+		},
+	}
+	cmd.Flags().StringVar(&binDir, "bin-dir", "", "directory containing the installed binary; defaults to this executable's directory")
+	cmd.Flags().StringVar(&name, "name", "", "installed binary name; defaults to this executable's file name")
+	return cmd
+}
+
+func removeFileIfExists(path string) error {
+	if path == "" {
+		return nil
+	}
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		return fmt.Errorf("remove %s: %w", path, err)
+	}
+	return nil
 }
 
 func (a *app) interactiveCommand(ctx context.Context) *cobra.Command {

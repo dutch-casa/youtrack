@@ -134,6 +134,15 @@ func newCapabilitiesDocument() capabilitiesDocument {
 					"yt upgrade --bin-dir ~/.local/bin",
 				},
 			},
+			{
+				Command: "yt uninstall",
+				Purpose: "Remove the installed binary and saved auth config.",
+				Mutates: true,
+				Examples: []string{
+					"yt uninstall",
+					"yt uninstall --bin-dir ~/.local/bin",
+				},
+			},
 		},
 		CommandReference: newCommandReference(),
 		Completeness: []capabilityBridge{
@@ -423,6 +432,18 @@ func newCommandReference() []capabilityCommandSpec {
 			Mutates:      true,
 			Output:       "JSON object with updated true and path.",
 			Examples:     []string{"yt upgrade", "youtrack upgrade"},
+		},
+		{
+			Command: "yt uninstall",
+			Purpose: "Remove the installed binary, its paired alias when present, and the saved auth config.",
+			Flags: []capabilityFlag{
+				valueFlag("bin-dir", "", "DIR", "", "Directory containing the installed binary; defaults to this executable's directory"),
+				valueFlag("name", "", "NAME", "", "Installed binary name; defaults to this executable's file name"),
+			},
+			AuthRequired: false,
+			Mutates:      true,
+			Output:       "JSON object with removed true, configRemoved true, path, configPath, and optional aliasPath.",
+			Examples:     []string{"yt uninstall", "youtrack uninstall"},
 		},
 	}
 }

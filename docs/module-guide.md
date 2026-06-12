@@ -45,6 +45,7 @@ See also:
 - [0041 Terminal Image Attachment Previews](adr/0041-terminal-image-attachment-previews.md)
 - [0042 Issue-Backed Helpdesk Surface](adr/0042-issue-backed-helpdesk-surface.md)
 - [0043 Terminal Markdown Image Previews](adr/0043-terminal-markdown-image-previews.md)
+- [0047 Top-Level Uninstall Command](adr/0047-top-level-uninstall-command.md)
 
 ## `internal/auth`
 
@@ -62,7 +63,7 @@ Role: Callers use typed operations for common issue, comment, attachment, link, 
 
 Secret: This module hides the command-line contract users and agents call.
 
-Role: It wires flags, subcommands, output defaults, authentication, capability discovery, supported command names, and binary upgrade entry points into a stable CLI surface. JSON is the default because the primary caller is an agent.
+Role: It wires flags, subcommands, output defaults, authentication, capability discovery, supported command names, and binary upgrade and uninstall entry points into a stable CLI surface. JSON is the default because the primary caller is an agent.
 
 ## `internal/textinput`
 

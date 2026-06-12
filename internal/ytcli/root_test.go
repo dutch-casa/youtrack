@@ -4,6 +4,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"net/http"
@@ -13,6 +14,8 @@ import (
 	"strings"
 	"testing"
 	"testing/quick"
+
+	"github.com/dutch-casa/youtrack/internal/auth"
 )
 
 func TestHelpIsAvailableWithoutAuth(t *testing.T) {
@@ -24,7 +27,7 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 	if !strings.Contains(out.String(), "Agent-friendly YouTrack CLI") {
 		t.Fatalf("help output = %q", out.String())
 	}
-	for _, command := range []string{"capabilities", "projects", "users", "articles", "agiles", "helpdesk", "commands", "attachments", "activities", "links", "upgrade"} {
+	for _, command := range []string{"capabilities", "projects", "users", "articles", "agiles", "helpdesk", "commands", "attachments", "activities", "links", "upgrade", "uninstall"} {
 		if !strings.Contains(out.String(), command) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}
@@ -112,6 +115,10 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	raw := findCapabilityCommand(doc.CommandReference, "yt raw PATH")
 	if raw.Output != "Exact response bytes to stdout or --output-file." || !findCapabilityFlag(raw.Flags, "header").Repeat || !findCapabilityFlag(raw.Flags, "query").Repeat {
 		t.Fatalf("yt raw capability = %#v, want exact byte output and repeatable header/query", raw)
+	}
+	uninstall := findCapabilityCommand(doc.CommandReference, "yt uninstall")
+	if uninstall.Command == "" || !uninstall.Mutates || findCapabilityFlag(uninstall.Flags, "bin-dir").Name == "" || findCapabilityFlag(uninstall.Flags, "name").Name == "" {
+		t.Fatalf("yt uninstall capability = %#v, want mutating uninstall command", uninstall)
 	}
 	interactive := findCapabilityCommand(doc.CommandReference, "yt interactive")
 	if interactive.Command == "" {
@@ -371,6 +378,53 @@ func TestAuthLoginVerifiesBeforeSaving(t *testing.T) {
 	}
 }
 
+func TestAuthLoginPromptVerifiesWithBearerToken(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	requests := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		requests++
+		if r.URL.Path != "/api/users/me" {
+			t.Fatalf("request path = %q, want /api/users/me", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:secret" {
+			t.Fatalf("authorization = %q, want bearer token", got)
+		}
+		_, _ = w.Write([]byte(`{"id":"u-1","login":"jane"}`))
+	}))
+	t.Cleanup(server.Close)
+
+	previousCanPrompt := canPrompt
+	canPrompt = func(in io.Reader) bool {
+		return true
+	}
+	t.Cleanup(func() {
+		canPrompt = previousCanPrompt
+	})
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", config,
+		"auth", "login",
+	}, strings.NewReader(server.URL+"\nperm:secret\n"), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("auth login prompt error = %v", err)
+	}
+	if requests != 1 {
+		t.Fatalf("requests = %d, want one verification request", requests)
+	}
+	var result struct {
+		Saved    bool   `json:"saved"`
+		Verified bool   `json:"verified"`
+		User     string `json:"user"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("auth login prompt output is not JSON: %v; output %q", err, out.String())
+	}
+	if !result.Saved || !result.Verified || result.User != "jane" {
+		t.Fatalf("auth login prompt output = %#v, want verified jane", result)
+	}
+}
+
 func TestAuthLoginDoesNotSaveFailedVerification(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "config.json")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -454,6 +508,63 @@ func TestUpgradeRunsDownloadedInstallerForCurrentBinary(t *testing.T) {
 	}
 	if !result.Updated || result.Path != filepath.Join(targetDir, "yt-test") {
 		t.Fatalf("upgrade output = %#v", result)
+	}
+}
+
+func TestUninstallRemovesBinaryAliasAndConfig(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "config.json")
+	store := auth.NewStore(config)
+	if err := store.Save(auth.Credentials{BaseURL: "https://example.youtrack.cloud", Token: "perm:secret"}); err != nil {
+		t.Fatalf("save auth config: %v", err)
+	}
+
+	binDir := t.TempDir()
+	targetPath := filepath.Join(binDir, "yt")
+	aliasPath := filepath.Join(binDir, "youtrack")
+	if err := os.WriteFile(targetPath, []byte("yt"), 0o755); err != nil {
+		t.Fatalf("write target binary: %v", err)
+	}
+	if err := os.WriteFile(aliasPath, []byte("youtrack"), 0o755); err != nil {
+		t.Fatalf("write alias binary: %v", err)
+	}
+
+	var out bytes.Buffer
+	var errOut bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", config,
+		"uninstall",
+		"--bin-dir", binDir,
+		"--name", "yt",
+	}, strings.NewReader(""), &out, &errOut)
+	if err != nil {
+		t.Fatalf("uninstall error = %v", err)
+	}
+
+	var result struct {
+		Removed       bool   `json:"removed"`
+		Path          string `json:"path"`
+		ConfigRemoved bool   `json:"configRemoved"`
+		ConfigPath    string `json:"configPath"`
+		AliasRemoved  bool   `json:"aliasRemoved"`
+		AliasPath     string `json:"aliasPath"`
+	}
+	if err := json.Unmarshal(out.Bytes(), &result); err != nil {
+		t.Fatalf("uninstall output is not JSON: %v; output %q", err, out.String())
+	}
+	if !result.Removed || !result.ConfigRemoved || result.Path != targetPath || result.ConfigPath != config || !result.AliasRemoved || result.AliasPath != aliasPath {
+		t.Fatalf("uninstall output = %#v, want removed binary pair and config", result)
+	}
+	if _, err := os.Stat(targetPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("target binary still exists: %v", err)
+	}
+	if _, err := os.Stat(aliasPath); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("alias binary still exists: %v", err)
+	}
+	if _, err := os.Stat(config); !errors.Is(err, os.ErrNotExist) {
+		t.Fatalf("config still exists: %v", err)
+	}
+	if strings.TrimSpace(errOut.String()) == "" {
+		t.Fatalf("uninstall stderr = %q, want progress messages", errOut.String())
 	}
 }
 

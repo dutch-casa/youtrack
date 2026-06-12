@@ -131,7 +131,11 @@ func Prompt(in io.Reader, out io.Writer) (Credentials, error) {
 }
 
 func PromptURL(in io.Reader, out io.Writer) (string, error) {
-	return promptURL(bufio.NewReader(in), out)
+	return PromptURLFromReader(bufio.NewReader(in), out)
+}
+
+func PromptURLFromReader(reader *bufio.Reader, out io.Writer) (string, error) {
+	return promptURL(reader, out)
 }
 
 func promptURL(reader *bufio.Reader, out io.Writer) (string, error) {
@@ -144,7 +148,11 @@ func promptURL(reader *bufio.Reader, out io.Writer) (string, error) {
 }
 
 func PromptToken(in io.Reader, out io.Writer) (string, error) {
-	return promptToken(in, bufio.NewReader(in), out)
+	return PromptTokenFromReader(in, bufio.NewReader(in), out)
+}
+
+func PromptTokenFromReader(in io.Reader, reader *bufio.Reader, out io.Writer) (string, error) {
+	return promptToken(in, reader, out)
 }
 
 func promptToken(in io.Reader, reader *bufio.Reader, out io.Writer) (string, error) {
