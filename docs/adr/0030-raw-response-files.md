@@ -14,7 +14,7 @@ Before this decision, the client named raw responses as `json.RawMessage`, and t
 
 Make `youtrack.Client.Raw` return `[]byte`.
 
-Add `yt raw --output-file/-o PATH` to write raw response bytes exactly with mode `0600`. Keep existing stdout behavior unchanged when no output file is set so current JSON/text uses continue to work.
+Write raw response bytes exactly to stdout when no output file is set. Add `yt raw --output-file/-o PATH` to write raw response bytes exactly with mode `0600` when callers want file-safe downloads or do not want binary bytes in the terminal.
 
 ## Consequences
 
@@ -22,7 +22,9 @@ Agents can use the same raw escape hatch for JSON endpoints and byte-producing e
 
 The YouTrack client surface now exposes the response fact it actually owns: raw bytes from HTTP, not JSON validity.
 
+The CLI no longer appends a newline to `yt raw` stdout. Text and JSON callers that want a trailing newline can add it explicitly in their shell or consuming program.
+
 ## Rejected Alternatives
 
 - Keep returning `json.RawMessage`: compatible by accident, but misleading and too narrow for a raw HTTP boundary.
-- Change stdout to exact byte streaming: more correct for binary output, but it would alter existing text behavior and can make terminal sessions unsafe for binary payloads.
+- Keep stdout as `Fprintln(string(data))`: convenient for casual text responses, but it mutates the response and makes the raw boundary dishonest.

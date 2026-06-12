@@ -592,8 +592,8 @@ func TestRawReadsBodyFromFile(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Execute() error = %v", err)
 	}
-	if !strings.Contains(out.String(), `"ok":true`) {
-		t.Fatalf("output = %q, want raw response", out.String())
+	if out.String() != `{"ok":true}` {
+		t.Fatalf("output = %q, want exact raw response", out.String())
 	}
 }
 
@@ -737,6 +737,28 @@ func TestRawWritesOutputFile(t *testing.T) {
 	}
 	if got := info.Mode().Perm(); got != 0o600 {
 		t.Fatalf("output file mode = %v, want 0600", got)
+	}
+}
+
+func TestRawWritesExactBytesToStdout(t *testing.T) {
+	want := []byte{0x00, 0x01, 0x02, 'Y', 'T'}
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		_, _ = w.Write(want)
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/download",
+	}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+	if !bytes.Equal(out.Bytes(), want) {
+		t.Fatalf("stdout = %v, want exact raw bytes %v", out.Bytes(), want)
 	}
 }
 

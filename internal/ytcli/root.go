@@ -833,7 +833,7 @@ func (a *app) rawCommand() *cobra.Command {
 	var outputFile string
 	cmd := &cobra.Command{
 		Use:   "raw PATH",
-		Short: "Call a YouTrack REST path and print the raw response",
+		Short: "Call a YouTrack REST path and write the raw response",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var reader io.Reader
@@ -876,7 +876,7 @@ func (a *app) rawCommand() *cobra.Command {
 			if outputFile != "" {
 				return writeRawOutputFile(outputFile, data)
 			}
-			_, err = fmt.Fprintln(a.out, string(data))
+			_, err = a.out.Write(data)
 			return err
 		},
 	}

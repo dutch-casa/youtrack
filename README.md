@@ -95,7 +95,7 @@ JSON is the default. Use `--format table` for human-readable output.
 
 For long generated text, description and comment commands accept explicit file/stdin sources such as `--description-file`, `--description-stdin`, `--text-file`, `--text-stdin`, `--comment-file`, and `--comment-stdin`.
 
-For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large bodies. Raw requests default body content to `application/json`; use `--content-type` when a long-tail endpoint expects a different media type. Use repeated `--header` or `-H` flags for endpoint-specific headers and repeated `--query` or `-q` flags for query parameters. Use `--output-file` or `-o` for byte-exact raw responses such as downloads. `Authorization` remains managed by auth, and `Content-Type` remains managed by `--content-type`.
+For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large bodies. Raw requests default body content to `application/json`; use `--content-type` when a long-tail endpoint expects a different media type. Use repeated `--header` or `-H` flags for endpoint-specific headers and repeated `--query` or `-q` flags for query parameters. Raw stdout is byte-exact and does not add a newline. Use `--output-file` or `-o` for downloads or binary responses. `Authorization` remains managed by auth, and `Content-Type` remains managed by `--content-type`.
 
 ## Interactive Mode
 
