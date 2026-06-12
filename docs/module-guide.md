@@ -16,6 +16,7 @@ See also:
 - [0012 TUI Workspace Structure](adr/0012-tui-workspace-structure.md)
 - [0013 Raw Body Sources](adr/0013-raw-body-sources.md)
 - [0014 TUI Command Actions](adr/0014-tui-command-actions.md)
+- [0015 Charm Text Input](adr/0015-charm-text-input.md)
 
 ## `internal/auth`
 

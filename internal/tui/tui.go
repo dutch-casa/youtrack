@@ -4,6 +4,7 @@ import (
 	"context"
 	"io"
 
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dutchcaz/youtrack/internal/youtrack"
 )
@@ -53,7 +54,7 @@ type model struct {
 	status   string
 
 	commandMode    bool
-	commandInput   string
+	commandInput   textinput.Model
 	commandRunning bool
 	commandErr     error
 
@@ -113,15 +114,20 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
 	}
+	commandInput := textinput.New()
+	commandInput.Prompt = ": "
+	commandInput.Placeholder = "State Fixed"
+	commandInput.CharLimit = 512
 	return model{
-		ctx:         ctx,
-		client:      client,
-		opts:        opts,
-		loading:     true,
-		comments:    make(map[string][]youtrack.Comment),
-		attachments: make(map[string][]youtrack.Attachment),
-		activities:  make(map[string][]youtrack.Activity),
-		links:       make(map[string][]youtrack.IssueLink),
+		ctx:          ctx,
+		client:       client,
+		opts:         opts,
+		loading:      true,
+		commandInput: commandInput,
+		comments:     make(map[string][]youtrack.Comment),
+		attachments:  make(map[string][]youtrack.Attachment),
+		activities:   make(map[string][]youtrack.Activity),
+		links:        make(map[string][]youtrack.IssueLink),
 	}
 }
 
@@ -144,9 +150,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case ":":
 			if m.currentIssueID() != "" && !m.commandRunning {
 				m.commandMode = true
-				m.commandInput = ""
+				m.commandInput.Reset()
+				m.commandInput.Focus()
 				m.commandErr = nil
 				m.status = ""
+				return m, textinput.Blink
 			}
 		case "tab":
 			m.pane = m.pane.next()
@@ -188,6 +196,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.commandErr = nil
 			m.commandMode = false
 			m.commandRunning = false
+			m.commandInput.Blur()
+			m.commandInput.Reset()
 			return m, m.loadIssues
 		}
 	case issuesMsg:
@@ -237,7 +247,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.status = "Applied " + msg.query + " to " + msg.issueID
-		m.commandInput = ""
+		m.commandInput.Reset()
 		delete(m.comments, msg.issueID)
 		delete(m.attachments, msg.issueID)
 		delete(m.activities, msg.issueID)
@@ -251,39 +261,37 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
 		m.commandMode = false
-		m.commandInput = ""
+		m.commandInput.Blur()
+		m.commandInput.Reset()
 		m.commandErr = nil
 		return m, nil
 	case "enter":
 		if m.commandRunning {
 			return m, nil
 		}
-		if m.commandInput == "" {
+		query := m.commandInput.Value()
+		if query == "" {
 			m.commandErr = nil
 			m.commandMode = false
+			m.commandInput.Blur()
 			return m, nil
 		}
 		issueID := m.currentIssueID()
 		if issueID == "" {
 			m.commandMode = false
+			m.commandInput.Blur()
 			return m, nil
 		}
-		query := m.commandInput
 		m.commandMode = false
+		m.commandInput.Blur()
 		m.commandRunning = true
 		m.commandErr = nil
 		m.status = "Applying " + query + "..."
 		return m, m.applyCommand(issueID, query)
-	case "backspace", "ctrl+h":
-		if len(m.commandInput) > 0 {
-			m.commandInput = m.commandInput[:len(m.commandInput)-1]
-		}
-	default:
-		if msg.Type == tea.KeyRunes {
-			m.commandInput += string(msg.Runes)
-		}
 	}
-	return m, nil
+	var cmd tea.Cmd
+	m.commandInput, cmd = m.commandInput.Update(msg)
+	return m, cmd
 }
 
 func (m model) loadIssues() tea.Msg {

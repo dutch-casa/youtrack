@@ -181,7 +181,7 @@ func (m model) issueAttachments(width, height int) string {
 
 func (m model) footer() string {
 	if m.commandMode {
-		return commandStyle.Render(": " + m.commandInput)
+		return commandStyle.Render(m.commandInput.View())
 	}
 	if m.commandErr != nil {
 		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render(": command  esc cancel  q quit")

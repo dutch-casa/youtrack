@@ -269,11 +269,41 @@ func TestCommandModeCancels(t *testing.T) {
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(model)
 
-	if m.commandMode || m.commandInput != "" {
-		t.Fatalf("command mode = %v, input = %q; want canceled", m.commandMode, m.commandInput)
+	if m.commandMode || m.commandInput.Value() != "" {
+		t.Fatalf("command mode = %v, input = %q; want canceled", m.commandMode, m.commandInput.Value())
 	}
 	if cmd != nil {
 		t.Fatal("cancel command != nil")
+	}
+}
+
+func TestCommandModeSupportsCursorEditing(t *testing.T) {
+	var commands []youtrack.ApplyCommandRequest
+	m := newModel(context.Background(), fakeClient{commands: &commands}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("State Fxed")})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyLeft})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'i'}})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("apply command = nil")
+	}
+
+	msg := cmd().(commandMsg)
+	if msg.query != "State Fixed" {
+		t.Fatalf("query = %q, want cursor-edited command", msg.query)
 	}
 }
 
