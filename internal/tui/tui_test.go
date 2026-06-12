@@ -456,8 +456,11 @@ func TestArticleResourcesUseMarkdownSource(t *testing.T) {
 	if strings.Contains(resource.Body, "\x1b[") {
 		t.Fatalf("article body contains ANSI before markdown rendering: %q", resource.Body)
 	}
+	if !strings.HasPrefix(resource.Body, "# Token setup") {
+		t.Fatalf("article body = %q, want title-first markdown heading", resource.Body)
+	}
 	rendered := stripANSI(renderMarkdown(resource.Body, 72))
-	for _, want := range []string{"Token setup", "KB-1", "SUP", "jane", "tab", "account security"} {
+	for _, want := range []string{"Token setup", "Article: KB-1", "Project: SUP", "Author: jane", "tab", "account security"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered article = %q, want %q", rendered, want)
 		}
@@ -1424,6 +1427,39 @@ func TestIssueDetailRendersMetadataStrip(t *testing.T) {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want metadata %q", view, want)
 		}
+	}
+}
+
+func TestIssueDetailRendersEvidencePanel(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 140, Height: 30})
+	m = updated.(model)
+	updated, _ = m.Update(issuesMsg{issues: []youtrack.Issue{{
+		IDReadable: "ABC-1",
+		Summary:    "One",
+	}}})
+	m = updated.(model)
+	m.comments["ABC-1"] = []youtrack.Comment{{Text: "one"}, {Text: "two"}}
+	m.attachments["ABC-1"] = []youtrack.Attachment{{Name: "log.txt"}}
+
+	view := stripANSI(m.View())
+	for _, want := range []string{"Evidence", "Comments: 2", "Attachments: 1", "Links: tab to load", "Activity: tab to load", "Work: tab to load"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want evidence %q", view, want)
+		}
+	}
+}
+
+func TestEvidenceRowsReflectLoadingAndErrors(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.commentsLoading = true
+	m.linksErr = errors.New("links down")
+
+	if row := m.commentsEvidence("ABC-1"); row.Value != "loading" || row.Kind != "loading" {
+		t.Fatalf("commentsEvidence() = %#v, want loading", row)
+	}
+	if row := m.linksEvidence("ABC-1"); row.Value != "error" || row.Kind != "error" {
+		t.Fatalf("linksEvidence() = %#v, want error", row)
 	}
 }
 

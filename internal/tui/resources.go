@@ -26,9 +26,10 @@ func articleResources(articles []youtrack.Article) []resourceItem {
 }
 
 func articleBody(article youtrack.Article) string {
+	id := firstNonEmpty(article.IDReadable, article.ID)
 	lines := []string{
 		"# " + firstNonEmpty(article.Summary, "Untitled article"),
-		strings.TrimSpace(strings.Join(nonEmpty(firstNonEmpty(article.IDReadable, article.ID), article.Project.ShortName, article.Reporter.Login), "  ")),
+		strings.TrimSpace(strings.Join(nonEmpty("Article: "+id, "Project: "+article.Project.ShortName, "Author: "+article.Reporter.Login), "  ")),
 		"",
 		trimBlank(article.Content),
 	}

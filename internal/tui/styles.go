@@ -21,4 +21,7 @@ var (
 	fieldWarnStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("11")).Bold(true)
 	fieldBadStyle        = lipgloss.NewStyle().Foreground(lipgloss.Color("9")).Bold(true)
 	fieldInfoStyle       = lipgloss.NewStyle().Foreground(lipgloss.Color("6")).Bold(true)
+	evidencePanelStyle   = lipgloss.NewStyle().Border(lipgloss.NormalBorder()).BorderForeground(lipgloss.Color("12")).Padding(0, 1)
+	evidenceCountStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("14")).Bold(true)
+	evidenceHintStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
 )

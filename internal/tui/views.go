@@ -270,6 +270,7 @@ func (m model) issueDetail(width int) string {
 	if fields := issueFieldPanel(issue, width); fields != "" {
 		lines = append(lines, "", fields)
 	}
+	lines = append(lines, "", m.issueEvidencePanel(issue.IDReadable, width))
 	lines = append(lines, "", renderMarkdown(issue.Description, width))
 	return strings.Join(lines, "\n")
 }
