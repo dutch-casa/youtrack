@@ -116,7 +116,7 @@ func (s Store) Ensure(in io.Reader, out io.Writer) (Credentials, error) {
 	if !errors.Is(err, ErrNotConfigured) {
 		return Credentials{}, err
 	}
-	if !canPrompt(in) {
+	if !CanPrompt(in) {
 		return Credentials{}, fmt.Errorf("%w: run `yt auth login --url <url> --token <token>` or set %s and %s", ErrNotConfigured, EnvURL, EnvToken)
 	}
 
@@ -193,7 +193,7 @@ func credentialsFromEnv() (Credentials, bool) {
 	return Credentials{BaseURL: baseURL, Token: token}, true
 }
 
-func canPrompt(in io.Reader) bool {
+func CanPrompt(in io.Reader) bool {
 	file, ok := in.(*os.File)
 	return ok && term.IsTerminal(int(file.Fd()))
 }

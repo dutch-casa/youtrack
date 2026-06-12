@@ -89,7 +89,7 @@ func (a *app) authCommand() *cobra.Command {
 		RunE: func(cmd *cobra.Command, args []string) error {
 			creds := auth.Credentials{BaseURL: baseURL, Token: token}
 			if creds.BaseURL == "" || creds.Token == "" {
-				if !isTerminal(a.in) {
+				if !auth.CanPrompt(a.in) {
 					return errors.New("non-interactive login requires --url and --token")
 				}
 				prompted, err := auth.Prompt(a.in, a.errOut)
@@ -947,16 +947,6 @@ func (f *formatValue) Set(value string) error {
 
 func (f *formatValue) Type() string {
 	return "format"
-}
-
-func isTerminal(r io.Reader) bool {
-	file, ok := r.(*os.File)
-	return ok && termIsTerminal(file)
-}
-
-func termIsTerminal(file *os.File) bool {
-	stat, err := file.Stat()
-	return err == nil && (stat.Mode()&os.ModeCharDevice) != 0
 }
 
 func redact(token string) string {
