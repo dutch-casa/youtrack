@@ -17,12 +17,16 @@ const (
 )
 
 func Write(w io.Writer, format Format, value any) error {
-	if format == Table {
+	switch format {
+	case Table:
 		return writeTable(w, value)
+	case JSON:
+		encoder := json.NewEncoder(w)
+		encoder.SetIndent("", "  ")
+		return encoder.Encode(value)
+	default:
+		return fmt.Errorf("unsupported output format %q", format)
 	}
-	encoder := json.NewEncoder(w)
-	encoder.SetIndent("", "  ")
-	return encoder.Encode(value)
 }
 
 func writeTable(w io.Writer, value any) error {
