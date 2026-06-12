@@ -12,16 +12,20 @@ import (
 )
 
 type fakeClient struct {
-	issues      []youtrack.Issue
-	comments    []youtrack.Comment
-	attachments []youtrack.Attachment
-	activities  []youtrack.Activity
-	links       []youtrack.IssueLink
-	commands    *[]youtrack.ApplyCommandRequest
-	err         error
+	issues        []youtrack.Issue
+	issueRequests *[]youtrack.IssueListOptions
+	comments      []youtrack.Comment
+	attachments   []youtrack.Attachment
+	activities    []youtrack.Activity
+	links         []youtrack.IssueLink
+	commands      *[]youtrack.ApplyCommandRequest
+	err           error
 }
 
 func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error) {
+	if f.issueRequests != nil {
+		*f.issueRequests = append(*f.issueRequests, opts)
+	}
 	return f.issues, f.err
 }
 
@@ -305,6 +309,82 @@ func TestCommandModeSupportsCursorEditing(t *testing.T) {
 	msg := cmd().(commandMsg)
 	if msg.query != "State Fixed" {
 		t.Fatalf("query = %q, want cursor-edited command", msg.query)
+	}
+}
+
+func TestQueryModeReloadsIssues(t *testing.T) {
+	var issueRequests []youtrack.IssueListOptions
+	m := newModel(context.Background(), fakeClient{
+		issues:        []youtrack.Issue{{IDReadable: "ABC-3", Summary: "Three"}},
+		issueRequests: &issueRequests,
+	}, Options{Query: "project: ABC", Top: 25})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{
+		{IDReadable: "ABC-1", Summary: "One"},
+		{IDReadable: "ABC-2", Summary: "Two"},
+	}})
+	m = updated.(model)
+	m.selected = 1
+	m.comments["ABC-2"] = []youtrack.Comment{{ID: "c-1", Text: "stale"}}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	if !m.queryMode {
+		t.Fatal("queryMode = false, want true")
+	}
+	if m.queryInput.Value() != "project: ABC" {
+		t.Fatalf("query input = %q, want current query", m.queryInput.Value())
+	}
+
+	m.queryInput.SetValue("project: DEF #Unresolved")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("query reload command = nil")
+	}
+	if m.queryMode {
+		t.Fatal("queryMode = true, want false")
+	}
+	if m.opts.Query != "project: DEF #Unresolved" {
+		t.Fatalf("query = %q, want updated query", m.opts.Query)
+	}
+	if m.selected != 0 {
+		t.Fatalf("selected = %d, want reset to first issue", m.selected)
+	}
+	if len(m.comments) != 0 {
+		t.Fatalf("comments cache = %#v, want cleared cache", m.comments)
+	}
+
+	msg := cmd().(issuesMsg)
+	if msg.err != nil {
+		t.Fatalf("reload error = %v", msg.err)
+	}
+	if len(issueRequests) != 1 || issueRequests[0].Query != "project: DEF #Unresolved" || issueRequests[0].Top != 25 {
+		t.Fatalf("issue requests = %#v, want updated query and top", issueRequests)
+	}
+	if len(msg.issues) != 1 || msg.issues[0].IDReadable != "ABC-3" {
+		t.Fatalf("reload issues = %#v, want fake client issues", msg.issues)
+	}
+}
+
+func TestQueryModeCancels(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{Query: "project: ABC"})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	m.queryInput.SetValue("project: DEF")
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+
+	if m.queryMode || m.queryInput.Value() != "" {
+		t.Fatalf("query mode = %v, input = %q; want canceled", m.queryMode, m.queryInput.Value())
+	}
+	if m.opts.Query != "project: ABC" {
+		t.Fatalf("query = %q, want unchanged query", m.opts.Query)
+	}
+	if cmd != nil {
+		t.Fatal("cancel command != nil")
 	}
 }
 

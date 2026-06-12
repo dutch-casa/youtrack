@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"io"
+	"strings"
 
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
@@ -59,6 +60,9 @@ type model struct {
 	commandInput   textinput.Model
 	commandRunning bool
 	commandErr     error
+
+	queryMode  bool
+	queryInput textinput.Model
 
 	comments        map[string][]youtrack.Comment
 	commentsLoading bool
@@ -120,6 +124,10 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	commandInput.Prompt = ": "
 	commandInput.Placeholder = "State Fixed"
 	commandInput.CharLimit = 512
+	queryInput := textinput.New()
+	queryInput.Prompt = "/ "
+	queryInput.Placeholder = "project: ABC #Unresolved"
+	queryInput.CharLimit = 512
 	detail := viewport.New(0, 0)
 	return model{
 		ctx:          ctx,
@@ -128,6 +136,7 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 		loading:      true,
 		detail:       detail,
 		commandInput: commandInput,
+		queryInput:   queryInput,
 		comments:     make(map[string][]youtrack.Comment),
 		attachments:  make(map[string][]youtrack.Attachment),
 		activities:   make(map[string][]youtrack.Activity),
@@ -148,6 +157,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.commandMode {
 			return m.updateCommandInput(msg)
 		}
+		if m.queryMode {
+			return m.updateQueryInput(msg)
+		}
 		if updated, ok := m.scrollDetail(msg); ok {
 			return updated, nil
 		}
@@ -159,6 +171,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.commandMode = true
 				m.commandInput.Reset()
 				m.commandInput.Focus()
+				m.commandErr = nil
+				m.status = ""
+				return m, textinput.Blink
+			}
+		case "/":
+			if !m.loading {
+				m.queryMode = true
+				m.queryInput.Reset()
+				m.queryInput.SetValue(m.opts.Query)
+				m.queryInput.Focus()
 				m.commandErr = nil
 				m.status = ""
 				return m, textinput.Blink
@@ -193,24 +215,18 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.loading = true
 			m.err = nil
 			m.detail.GotoTop()
-			m.comments = make(map[string][]youtrack.Comment)
-			m.commentsErr = nil
-			m.commentsLoading = false
-			m.attachments = make(map[string][]youtrack.Attachment)
-			m.attachmentsErr = nil
-			m.attachmentsLoading = false
-			m.activities = make(map[string][]youtrack.Activity)
-			m.activitiesErr = nil
-			m.activitiesLoading = false
-			m.links = make(map[string][]youtrack.IssueLink)
-			m.linksErr = nil
-			m.linksLoading = false
+			m.clearPaneCaches()
 			m.status = ""
 			m.commandErr = nil
 			m.commandMode = false
 			m.commandRunning = false
 			m.commandInput.Blur()
 			m.commandInput.Reset()
+			m.commandInput.SetValue("")
+			m.queryMode = false
+			m.queryInput.Blur()
+			m.queryInput.Reset()
+			m.queryInput.SetValue("")
 			return m, m.loadIssues
 		}
 	case issuesMsg:
@@ -265,6 +281,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.status = "Applied " + msg.query + " to " + msg.issueID
 		m.commandInput.Reset()
+		m.commandInput.SetValue("")
 		delete(m.comments, msg.issueID)
 		delete(m.attachments, msg.issueID)
 		delete(m.activities, msg.issueID)
@@ -303,6 +320,7 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.commandMode = false
 		m.commandInput.Blur()
 		m.commandInput.Reset()
+		m.commandInput.SetValue("")
 		m.commandErr = nil
 		return m, nil
 	case "enter":
@@ -314,12 +332,14 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.commandErr = nil
 			m.commandMode = false
 			m.commandInput.Blur()
+			m.commandInput.SetValue("")
 			return m, nil
 		}
 		issueID := m.currentIssueID()
 		if issueID == "" {
 			m.commandMode = false
 			m.commandInput.Blur()
+			m.commandInput.SetValue("")
 			return m, nil
 		}
 		m.commandMode = false
@@ -334,9 +354,53 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	return m, cmd
 }
 
+func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.queryMode = false
+		m.queryInput.Blur()
+		m.queryInput.Reset()
+		m.queryInput.SetValue("")
+		return m, nil
+	case "enter":
+		query := strings.TrimSpace(m.queryInput.Value())
+		m.queryMode = false
+		m.queryInput.Blur()
+		m.queryInput.Reset()
+		m.queryInput.SetValue("")
+		m.opts.Query = query
+		m.selected = 0
+		m.loading = true
+		m.err = nil
+		m.detail.GotoTop()
+		m.clearPaneCaches()
+		m.status = "Loading query..."
+		m.commandErr = nil
+		return m, m.loadIssues
+	}
+	var cmd tea.Cmd
+	m.queryInput, cmd = m.queryInput.Update(msg)
+	return m, cmd
+}
+
 func (m model) loadIssues() tea.Msg {
 	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.opts.Query, Top: m.opts.Top})
 	return issuesMsg{issues: issues, err: err}
+}
+
+func (m *model) clearPaneCaches() {
+	m.comments = make(map[string][]youtrack.Comment)
+	m.commentsErr = nil
+	m.commentsLoading = false
+	m.attachments = make(map[string][]youtrack.Attachment)
+	m.attachmentsErr = nil
+	m.attachmentsLoading = false
+	m.activities = make(map[string][]youtrack.Activity)
+	m.activitiesErr = nil
+	m.activitiesLoading = false
+	m.links = make(map[string][]youtrack.IssueLink)
+	m.linksErr = nil
+	m.linksLoading = false
 }
 
 func (m model) withSelectedCommentsLoading() (tea.Model, tea.Cmd) {

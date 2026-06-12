@@ -232,11 +232,14 @@ func (m model) footer() string {
 	if m.commandMode {
 		return commandStyle.Render(m.commandInput.View())
 	}
+	if m.queryMode {
+		return commandStyle.Render(m.queryInput.View())
+	}
 	if m.commandErr != nil {
-		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render(": command  esc cancel  q quit")
+		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render("/ query  : command  esc cancel  q quit")
 	}
 	if m.status != "" {
-		return statusStyle.Render(m.status) + "  " + helpStyle.Render(": command  tab panes  r refresh  q quit")
+		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  : command  tab panes  r refresh  q quit")
 	}
-	return helpStyle.Render("j/k move  tab details/comments/links/activity/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  / query  tab details/comments/links/activity/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
 }
