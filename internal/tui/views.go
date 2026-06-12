@@ -46,24 +46,47 @@ func (m model) issueList(width, height int) string {
 }
 
 func (m model) issuePane(width, height int) string {
+	content := m.issuePaneContent()
+	return m.renderDetailViewport(content, width, height)
+}
+
+func (m model) issuePaneContent() string {
 	if len(m.issues) == 0 {
-		return panelStyle.Width(width).Height(height).Render("No issues")
+		return "No issues"
 	}
 	switch m.pane {
 	case commentsPane:
-		return m.issueComments(width, height)
+		return m.issueComments()
 	case linksPane:
-		return m.issueLinks(width, height)
+		return m.issueLinks()
 	case activitiesPane:
-		return m.issueActivities(width, height)
+		return m.issueActivities()
 	case attachmentsPane:
-		return m.issueAttachments(width, height)
+		return m.issueAttachments()
 	default:
-		return m.issueDetail(width, height)
+		return m.issueDetail()
 	}
 }
 
-func (m model) issueDetail(width, height int) string {
+func (m model) renderDetailViewport(content string, width, height int) string {
+	viewportWidth := max(1, width-4)
+	viewportHeight := max(1, height-2)
+	m.detail.Width = viewportWidth
+	m.detail.Height = viewportHeight
+	m.detail.SetContent(content)
+	return panelStyle.Width(width).Height(height).Render(m.detail.View())
+}
+
+func (m *model) syncDetailViewport() {
+	listWidth := max(28, m.width/3)
+	detailWidth := max(40, m.width-listWidth-4)
+	bodyHeight := max(3, m.height-3)
+	m.detail.Width = max(1, detailWidth-4)
+	m.detail.Height = max(1, bodyHeight-2)
+	m.detail.SetContent(m.issuePaneContent())
+}
+
+func (m model) issueDetail() string {
 	issue := m.issues[m.selected]
 	lines := []string{
 		titleStyle.Render(issue.IDReadable),
@@ -79,20 +102,20 @@ func (m model) issueDetail(width, height int) string {
 		lines = append(lines, "", titleStyle.Render("Fields"))
 		lines = append(lines, fields...)
 	}
-	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+	return strings.Join(lines, "\n")
 }
 
-func (m model) issueComments(width, height int) string {
+func (m model) issueComments() string {
 	issueID := m.currentIssueID()
 	if m.commentsLoading {
-		return panelStyle.Width(width).Height(height).Render("Loading comments...")
+		return "Loading comments..."
 	}
 	if m.commentsErr != nil {
-		return panelStyle.Width(width).Height(height).Render("Error: " + m.commentsErr.Error())
+		return "Error: " + m.commentsErr.Error()
 	}
 	comments := m.comments[issueID]
 	if len(comments) == 0 {
-		return panelStyle.Width(width).Height(height).Render(titleStyle.Render(issueID) + "\n\nNo comments")
+		return titleStyle.Render(issueID) + "\n\nNo comments"
 	}
 
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Comments"), ""}
@@ -100,20 +123,20 @@ func (m model) issueComments(width, height int) string {
 		author := firstNonEmpty(comment.Author.FullName, comment.Author.Name, comment.Author.Login)
 		lines = append(lines, author+": "+strings.TrimSpace(comment.Text), "")
 	}
-	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+	return strings.Join(lines, "\n")
 }
 
-func (m model) issueLinks(width, height int) string {
+func (m model) issueLinks() string {
 	issueID := m.currentIssueID()
 	if m.linksLoading {
-		return panelStyle.Width(width).Height(height).Render("Loading links...")
+		return "Loading links..."
 	}
 	if m.linksErr != nil {
-		return panelStyle.Width(width).Height(height).Render("Error: " + m.linksErr.Error())
+		return "Error: " + m.linksErr.Error()
 	}
 	links := m.links[issueID]
 	if len(links) == 0 {
-		return panelStyle.Width(width).Height(height).Render(titleStyle.Render(issueID) + "\n\nNo links")
+		return titleStyle.Render(issueID) + "\n\nNo links"
 	}
 
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Links"), ""}
@@ -127,20 +150,20 @@ func (m model) issueLinks(width, height int) string {
 			lines = append(lines, fmt.Sprintf("%s  %s  %s  %s", firstNonEmpty(link.LinkType.Name, "Link"), linkDirection(link), issue.IDReadable, issue.Summary))
 		}
 	}
-	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+	return strings.Join(lines, "\n")
 }
 
-func (m model) issueActivities(width, height int) string {
+func (m model) issueActivities() string {
 	issueID := m.currentIssueID()
 	if m.activitiesLoading {
-		return panelStyle.Width(width).Height(height).Render("Loading activity...")
+		return "Loading activity..."
 	}
 	if m.activitiesErr != nil {
-		return panelStyle.Width(width).Height(height).Render("Error: " + m.activitiesErr.Error())
+		return "Error: " + m.activitiesErr.Error()
 	}
 	activities := m.activities[issueID]
 	if len(activities) == 0 {
-		return panelStyle.Width(width).Height(height).Render(titleStyle.Render(issueID) + "\n\nNo activity")
+		return titleStyle.Render(issueID) + "\n\nNo activity"
 	}
 
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Activity"), ""}
@@ -148,20 +171,20 @@ func (m model) issueActivities(width, height int) string {
 		author := firstNonEmpty(activity.Author.FullName, activity.Author.Name, activity.Author.Login)
 		lines = append(lines, strings.TrimSpace(strings.Join(nonEmpty(author, activity.Summary()), "  ")))
 	}
-	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+	return strings.Join(lines, "\n")
 }
 
-func (m model) issueAttachments(width, height int) string {
+func (m model) issueAttachments() string {
 	issueID := m.currentIssueID()
 	if m.attachmentsLoading {
-		return panelStyle.Width(width).Height(height).Render("Loading attachments...")
+		return "Loading attachments..."
 	}
 	if m.attachmentsErr != nil {
-		return panelStyle.Width(width).Height(height).Render("Error: " + m.attachmentsErr.Error())
+		return "Error: " + m.attachmentsErr.Error()
 	}
 	attachments := m.attachments[issueID]
 	if len(attachments) == 0 {
-		return panelStyle.Width(width).Height(height).Render(titleStyle.Render(issueID) + "\n\nNo attachments")
+		return titleStyle.Render(issueID) + "\n\nNo attachments"
 	}
 
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Attachments"), ""}
@@ -176,7 +199,7 @@ func (m model) issueAttachments(width, height int) string {
 		}
 		lines = append(lines, attachment.Name)
 	}
-	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+	return strings.Join(lines, "\n")
 }
 
 func (m model) footer() string {
@@ -189,5 +212,5 @@ func (m model) footer() string {
 	if m.status != "" {
 		return statusStyle.Render(m.status) + "  " + helpStyle.Render(": command  tab panes  r refresh  q quit")
 	}
-	return helpStyle.Render("j/k move  tab details/comments/links/activity/attachments  : command  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  tab details/comments/links/activity/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
 }

@@ -17,6 +17,7 @@ See also:
 - [0013 Raw Body Sources](adr/0013-raw-body-sources.md)
 - [0014 TUI Command Actions](adr/0014-tui-command-actions.md)
 - [0015 Charm Text Input](adr/0015-charm-text-input.md)
+- [0016 Scrollable TUI Panes](adr/0016-scrollable-tui-panes.md)
 
 ## `internal/auth`
 

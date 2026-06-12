@@ -307,6 +307,38 @@ func TestCommandModeSupportsCursorEditing(t *testing.T) {
 	}
 }
 
+func TestDetailPaneScrollsAndResetsOnSelectionChange(t *testing.T) {
+	description := strings.Join([]string{
+		"one",
+		"two",
+		"three",
+		"four",
+		"five",
+		"six",
+	}, "\n")
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(tea.WindowSizeMsg{Width: 80, Height: 8})
+	m = updated.(model)
+	updated, _ = m.Update(issuesMsg{issues: []youtrack.Issue{
+		{IDReadable: "ABC-1", Summary: "One", Description: description},
+		{IDReadable: "ABC-2", Summary: "Two", Description: description},
+	}})
+	m = updated.(model)
+	_ = m.View()
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyPgDown})
+	m = updated.(model)
+	if m.detail.YOffset == 0 {
+		t.Fatal("detail YOffset = 0, want scrolled viewport")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyDown})
+	m = updated.(model)
+	if m.detail.YOffset != 0 {
+		t.Fatalf("detail YOffset = %d, want reset on selection change", m.detail.YOffset)
+	}
+}
+
 func TestModelErrorView(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	updated, _ := m.Update(issuesMsg{err: errors.New("network down")})

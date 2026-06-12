@@ -5,6 +5,7 @@ import (
 	"io"
 
 	"github.com/charmbracelet/bubbles/textinput"
+	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/dutchcaz/youtrack/internal/youtrack"
 )
@@ -52,6 +53,7 @@ type model struct {
 	err      error
 	pane     pane
 	status   string
+	detail   viewport.Model
 
 	commandMode    bool
 	commandInput   textinput.Model
@@ -118,11 +120,13 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	commandInput.Prompt = ": "
 	commandInput.Placeholder = "State Fixed"
 	commandInput.CharLimit = 512
+	detail := viewport.New(0, 0)
 	return model{
 		ctx:          ctx,
 		client:       client,
 		opts:         opts,
 		loading:      true,
+		detail:       detail,
 		commandInput: commandInput,
 		comments:     make(map[string][]youtrack.Comment),
 		attachments:  make(map[string][]youtrack.Attachment),
@@ -144,6 +148,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.commandMode {
 			return m.updateCommandInput(msg)
 		}
+		if updated, ok := m.scrollDetail(msg); ok {
+			return updated, nil
+		}
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
@@ -158,28 +165,34 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "tab":
 			m.pane = m.pane.next()
+			m.detail.GotoTop()
 			return m.withSelectedPaneLoading()
 		case "j", "down":
 			if m.selected < len(m.issues)-1 {
 				m.selected++
+				m.detail.GotoTop()
 				return m.withSelectedPaneLoading()
 			}
 		case "k", "up":
 			if m.selected > 0 {
 				m.selected--
+				m.detail.GotoTop()
 				return m.withSelectedPaneLoading()
 			}
 		case "g", "home":
 			m.selected = 0
+			m.detail.GotoTop()
 			return m.withSelectedPaneLoading()
 		case "G", "end":
 			if len(m.issues) > 0 {
 				m.selected = len(m.issues) - 1
+				m.detail.GotoTop()
 				return m.withSelectedPaneLoading()
 			}
 		case "r":
 			m.loading = true
 			m.err = nil
+			m.detail.GotoTop()
 			m.comments = make(map[string][]youtrack.Comment)
 			m.commentsErr = nil
 			m.commentsLoading = false
@@ -211,6 +224,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentIssueID() == msg.issueID {
 			m.commentsLoading = false
 			m.commentsErr = msg.err
+			m.detail.GotoTop()
 		}
 		if msg.err == nil {
 			m.comments[msg.issueID] = msg.comments
@@ -219,6 +233,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentIssueID() == msg.issueID {
 			m.attachmentsLoading = false
 			m.attachmentsErr = msg.err
+			m.detail.GotoTop()
 		}
 		if msg.err == nil {
 			m.attachments[msg.issueID] = msg.attachments
@@ -227,6 +242,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentIssueID() == msg.issueID {
 			m.activitiesLoading = false
 			m.activitiesErr = msg.err
+			m.detail.GotoTop()
 		}
 		if msg.err == nil {
 			m.activities[msg.issueID] = msg.activities
@@ -235,6 +251,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.currentIssueID() == msg.issueID {
 			m.linksLoading = false
 			m.linksErr = msg.err
+			m.detail.GotoTop()
 		}
 		if msg.err == nil {
 			m.links[msg.issueID] = msg.links
@@ -255,6 +272,29 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.loadIssues
 	}
 	return m, nil
+}
+
+func (m model) scrollDetail(msg tea.KeyMsg) (model, bool) {
+	switch {
+	case msg.Type == tea.KeyPgDown || msg.String() == "pgdown":
+		m.syncDetailViewport()
+		m.detail.SetYOffset(m.detail.YOffset + max(1, m.detail.Height))
+		return m, true
+	case msg.Type == tea.KeyPgUp || msg.String() == "pgup":
+		m.syncDetailViewport()
+		m.detail.SetYOffset(m.detail.YOffset - max(1, m.detail.Height))
+		return m, true
+	case msg.Type == tea.KeyCtrlD || msg.String() == "ctrl+d":
+		m.syncDetailViewport()
+		m.detail.SetYOffset(m.detail.YOffset + max(1, m.detail.Height/2))
+		return m, true
+	case msg.Type == tea.KeyCtrlU || msg.String() == "ctrl+u":
+		m.syncDetailViewport()
+		m.detail.SetYOffset(m.detail.YOffset - max(1, m.detail.Height/2))
+		return m, true
+	default:
+		return m, false
+	}
 }
 
 func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
