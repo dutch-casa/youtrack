@@ -20,6 +20,7 @@ type Options struct {
 type Client interface {
 	Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error)
 	Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error)
+	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
 }
 
 type pane int
@@ -27,6 +28,7 @@ type pane int
 const (
 	detailsPane pane = iota
 	commentsPane
+	attachmentsPane
 )
 
 func Run(ctx context.Context, client Client, opts Options, out io.Writer) error {
@@ -51,6 +53,10 @@ type model struct {
 	comments        map[string][]youtrack.Comment
 	commentsLoading bool
 	commentsErr     error
+
+	attachments        map[string][]youtrack.Attachment
+	attachmentsLoading bool
+	attachmentsErr     error
 }
 
 type issuesMsg struct {
@@ -64,11 +70,24 @@ type commentsMsg struct {
 	err      error
 }
 
+type attachmentsMsg struct {
+	issueID     string
+	attachments []youtrack.Attachment
+	err         error
+}
+
 func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
 	}
-	return model{ctx: ctx, client: client, opts: opts, loading: true, comments: make(map[string][]youtrack.Comment)}
+	return model{
+		ctx:         ctx,
+		client:      client,
+		opts:        opts,
+		loading:     true,
+		comments:    make(map[string][]youtrack.Comment),
+		attachments: make(map[string][]youtrack.Attachment),
+	}
 }
 
 func (m model) Init() tea.Cmd {
@@ -85,36 +104,25 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
 		case "tab":
-			if m.pane == detailsPane {
-				m.pane = commentsPane
-				return m.withSelectedCommentsLoading()
-			}
-			m.pane = detailsPane
+			m.pane = m.pane.next()
+			return m.withSelectedPaneLoading()
 		case "j", "down":
 			if m.selected < len(m.issues)-1 {
 				m.selected++
-				if m.pane == commentsPane {
-					return m.withSelectedCommentsLoading()
-				}
+				return m.withSelectedPaneLoading()
 			}
 		case "k", "up":
 			if m.selected > 0 {
 				m.selected--
-				if m.pane == commentsPane {
-					return m.withSelectedCommentsLoading()
-				}
+				return m.withSelectedPaneLoading()
 			}
 		case "g", "home":
 			m.selected = 0
-			if m.pane == commentsPane {
-				return m.withSelectedCommentsLoading()
-			}
+			return m.withSelectedPaneLoading()
 		case "G", "end":
 			if len(m.issues) > 0 {
 				m.selected = len(m.issues) - 1
-				if m.pane == commentsPane {
-					return m.withSelectedCommentsLoading()
-				}
+				return m.withSelectedPaneLoading()
 			}
 		case "r":
 			m.loading = true
@@ -122,6 +130,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.comments = make(map[string][]youtrack.Comment)
 			m.commentsErr = nil
 			m.commentsLoading = false
+			m.attachments = make(map[string][]youtrack.Attachment)
+			m.attachmentsErr = nil
+			m.attachmentsLoading = false
 			return m, m.loadIssues
 		}
 	case issuesMsg:
@@ -138,6 +149,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil {
 			m.comments[msg.issueID] = msg.comments
+		}
+	case attachmentsMsg:
+		if m.currentIssueID() == msg.issueID {
+			m.attachmentsLoading = false
+			m.attachmentsErr = msg.err
+		}
+		if msg.err == nil {
+			m.attachments[msg.issueID] = msg.attachments
 		}
 	}
 	return m, nil
@@ -186,10 +205,43 @@ func (m model) withSelectedCommentsLoading() (tea.Model, tea.Cmd) {
 	return m, m.loadComments(issueID)
 }
 
+func (m model) withSelectedAttachmentsLoading() (tea.Model, tea.Cmd) {
+	issueID := m.currentIssueID()
+	if issueID == "" {
+		return m, nil
+	}
+	if _, ok := m.attachments[issueID]; ok {
+		m.attachmentsLoading = false
+		m.attachmentsErr = nil
+		return m, nil
+	}
+	m.attachmentsLoading = true
+	m.attachmentsErr = nil
+	return m, m.loadAttachments(issueID)
+}
+
+func (m model) withSelectedPaneLoading() (tea.Model, tea.Cmd) {
+	switch m.pane {
+	case commentsPane:
+		return m.withSelectedCommentsLoading()
+	case attachmentsPane:
+		return m.withSelectedAttachmentsLoading()
+	default:
+		return m, nil
+	}
+}
+
 func (m model) loadComments(issueID string) tea.Cmd {
 	return func() tea.Msg {
 		comments, err := m.client.Comments(m.ctx, issueID)
 		return commentsMsg{issueID: issueID, comments: comments, err: err}
+	}
+}
+
+func (m model) loadAttachments(issueID string) tea.Cmd {
+	return func() tea.Msg {
+		attachments, err := m.client.Attachments(m.ctx, youtrack.AttachmentListOptions{IssueID: issueID, Top: 42})
+		return attachmentsMsg{issueID: issueID, attachments: attachments, err: err}
 	}
 }
 
@@ -219,10 +271,14 @@ func (m model) issuePane(width, height int) string {
 	if len(m.issues) == 0 {
 		return panelStyle.Width(width).Height(height).Render("No issues")
 	}
-	if m.pane == commentsPane {
+	switch m.pane {
+	case commentsPane:
 		return m.issueComments(width, height)
+	case attachmentsPane:
+		return m.issueAttachments(width, height)
+	default:
+		return m.issueDetail(width, height)
 	}
-	return m.issueDetail(width, height)
 }
 
 func (m model) issueDetail(width, height int) string {
@@ -265,8 +321,47 @@ func (m model) issueComments(width, height int) string {
 	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
 }
 
+func (m model) issueAttachments(width, height int) string {
+	issueID := m.currentIssueID()
+	if m.attachmentsLoading {
+		return panelStyle.Width(width).Height(height).Render("Loading attachments...")
+	}
+	if m.attachmentsErr != nil {
+		return panelStyle.Width(width).Height(height).Render("Error: " + m.attachmentsErr.Error())
+	}
+	attachments := m.attachments[issueID]
+	if len(attachments) == 0 {
+		return panelStyle.Width(width).Height(height).Render(titleStyle.Render(issueID) + "\n\nNo attachments")
+	}
+
+	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Attachments"), ""}
+	for _, attachment := range attachments {
+		author := firstNonEmpty(attachment.Author.FullName, attachment.Author.Name, attachment.Author.Login)
+		size := formatBytes(attachment.Size)
+		kind := firstNonEmpty(attachment.MimeType, attachment.Extension)
+		details := strings.TrimSpace(strings.Join(nonEmpty(size, kind, author), "  "))
+		if details != "" {
+			lines = append(lines, attachment.Name+"  "+details)
+			continue
+		}
+		lines = append(lines, attachment.Name)
+	}
+	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
+}
+
 func footer() string {
-	return helpStyle.Render("j/k move  tab details/comments  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  tab details/comments/attachments  g/G top/bottom  r refresh  q quit")
+}
+
+func (p pane) next() pane {
+	switch p {
+	case detailsPane:
+		return commentsPane
+	case commentsPane:
+		return attachmentsPane
+	default:
+		return detailsPane
+	}
 }
 
 func truncate(value string, width int) string {
@@ -381,6 +476,34 @@ func firstNonEmpty(values ...string) string {
 		}
 	}
 	return ""
+}
+
+func nonEmpty(values ...string) []string {
+	result := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != "" {
+			result = append(result, value)
+		}
+	}
+	return result
+}
+
+func formatBytes(size int64) string {
+	if size <= 0 {
+		return ""
+	}
+	const unit = 1024
+	if size < unit {
+		return fmt.Sprintf("%d B", size)
+	}
+	value := float64(size)
+	for _, suffix := range []string{"KiB", "MiB", "GiB"} {
+		value /= unit
+		if value < unit {
+			return fmt.Sprintf("%.1f %s", value, suffix)
+		}
+	}
+	return fmt.Sprintf("%.1f TiB", value/unit)
 }
 
 var (

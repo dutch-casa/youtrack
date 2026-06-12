@@ -11,9 +11,10 @@ import (
 )
 
 type fakeClient struct {
-	issues   []youtrack.Issue
-	comments []youtrack.Comment
-	err      error
+	issues      []youtrack.Issue
+	comments    []youtrack.Comment
+	attachments []youtrack.Attachment
+	err         error
 }
 
 func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) ([]youtrack.Issue, error) {
@@ -22,6 +23,10 @@ func (f fakeClient) Issues(ctx context.Context, opts youtrack.IssueListOptions) 
 
 func (f fakeClient) Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error) {
 	return f.comments, f.err
+}
+
+func (f fakeClient) Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error) {
+	return f.attachments, f.err
 }
 
 func TestModelMovementClamps(t *testing.T) {
@@ -79,6 +84,26 @@ func TestTabLoadsCommentsPane(t *testing.T) {
 	}
 }
 
+func TestTabCyclesToAttachmentsPane(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyTab})
+	m = updated.(model)
+	if m.pane != attachmentsPane {
+		t.Fatalf("pane = %v, want attachmentsPane", m.pane)
+	}
+	if !m.attachmentsLoading {
+		t.Fatal("attachmentsLoading = false, want true")
+	}
+	if cmd == nil {
+		t.Fatal("attachment load command = nil")
+	}
+}
+
 func TestCommentsPaneRendersComments(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
@@ -96,6 +121,31 @@ func TestCommentsPaneRendersComments(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "Comments") || !strings.Contains(view, "jane: Looks fixed") {
 		t.Fatalf("View() = %q, want comment", view)
+	}
+}
+
+func TestAttachmentsPaneRendersAttachments(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = attachmentsPane
+	updated, _ = m.Update(attachmentsMsg{
+		issueID: "ABC-1",
+		attachments: []youtrack.Attachment{{
+			Name:     "screenshot.png",
+			Size:     2048,
+			MimeType: "image/png",
+			Author:   youtrack.User{Login: "jane"},
+		}},
+	})
+	m = updated.(model)
+
+	view := m.View()
+	if !strings.Contains(view, "Attachments") || !strings.Contains(view, "screenshot.png") {
+		t.Fatalf("View() = %q, want attachment", view)
+	}
+	if !strings.Contains(view, "2.0 KiB") || !strings.Contains(view, "image/png") {
+		t.Fatalf("View() = %q, want attachment metadata", view)
 	}
 }
 

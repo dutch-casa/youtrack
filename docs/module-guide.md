@@ -10,6 +10,7 @@ See also:
 - [0006 Centralized Text Input](adr/0006-centralized-text-input.md)
 - [0007 Typed Time Tracking](adr/0007-typed-time-tracking.md)
 - [0008 Typed Attachments](adr/0008-typed-attachments.md)
+- [0009 TUI Evidence Browsing](adr/0009-tui-evidence-browsing.md)
 
 ## `internal/auth`
 
@@ -39,4 +40,4 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 Secret: This module hides the terminal interaction state for browsing issues.
 
-Role: It owns keyboard bindings, layout, selection state, and rendering for the lazygit-style interactive mode.
+Role: It owns keyboard bindings, layout, selection state, lazy-loaded evidence panes, and rendering for the lazygit-style interactive mode.

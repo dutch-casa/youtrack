@@ -59,4 +59,4 @@ For long generated text, description and comment commands accept explicit file/s
 yt interactive --query 'project: ABC #Unresolved'
 ```
 
-Keys: `j/k` move, `g/G` top/bottom, `r` refresh, `q` quit.
+Keys: `j/k` move, `tab` switches details/comments/attachments, `g/G` top/bottom, `r` refresh, `q` quit.
