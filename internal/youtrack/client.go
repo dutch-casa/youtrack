@@ -50,13 +50,18 @@ type Project struct {
 }
 
 type Issue struct {
-	ID          string          `json:"id"`
-	IDReadable  string          `json:"idReadable"`
-	Summary     string          `json:"summary"`
-	Description string          `json:"description,omitempty"`
-	Resolved    any             `json:"resolved,omitempty"`
-	Project     Project         `json:"project"`
-	Custom      json.RawMessage `json:"customFields,omitempty"`
+	ID           string        `json:"id"`
+	IDReadable   string        `json:"idReadable"`
+	Summary      string        `json:"summary"`
+	Description  string        `json:"description,omitempty"`
+	Resolved     any           `json:"resolved,omitempty"`
+	Project      Project       `json:"project"`
+	CustomFields []CustomField `json:"customFields,omitempty"`
+}
+
+type CustomField struct {
+	Name  string `json:"name"`
+	Value string `json:"value,omitempty"`
 }
 
 type Comment struct {
@@ -613,7 +618,7 @@ func (c *Client) Raw(ctx context.Context, raw RawRequest) ([]byte, error) {
 	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
 		return nil, decodeAPIError(resp.StatusCode, data)
 	}
-	return json.RawMessage(data), nil
+	return data, nil
 }
 
 func applyRawHeaders(req *http.Request, headers http.Header) error {

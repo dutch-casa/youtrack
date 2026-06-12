@@ -1,69 +1,30 @@
 package tui
 
 import (
-	"encoding/json"
 	"fmt"
 	"strings"
 
 	"github.com/dutchcaz/youtrack/internal/youtrack"
 )
 
-type issueCustomField struct {
-	Name  string
-	Value string
-}
-
-func issueCustomFields(issue youtrack.Issue) []issueCustomField {
-	if len(issue.Custom) == 0 {
-		return nil
-	}
-
-	var rawFields []struct {
-		Name  string          `json:"name"`
-		Value json.RawMessage `json:"value"`
-	}
-	if err := json.Unmarshal(issue.Custom, &rawFields); err != nil {
-		return nil
-	}
-
-	fields := make([]issueCustomField, 0, len(rawFields))
-	for _, rawField := range rawFields {
-		name := strings.TrimSpace(rawField.Name)
-		value := fieldValue(rawField.Value)
-		if name == "" || value == "" {
-			continue
-		}
-		fields = append(fields, issueCustomField{Name: name, Value: value})
-	}
-	return fields
-}
-
 func issueFieldValue(issue youtrack.Issue, names ...string) string {
-	return customFieldValue(issueCustomFields(issue), names...)
-}
-
-func customFieldValue(fields []issueCustomField, names ...string) string {
-	for _, field := range fields {
-		for _, name := range names {
-			if strings.EqualFold(field.Name, name) {
-				return field.Value
-			}
-		}
-	}
-	return ""
+	return issue.CustomFieldValue(names...)
 }
 
 func issueFields(issue youtrack.Issue) []string {
-	fields := issueCustomFields(issue)
-	lines := make([]string, 0, len(fields))
-	for _, field := range fields {
-		lines = append(lines, field.Name+": "+field.Value)
+	lines := make([]string, 0, len(issue.CustomFields))
+	for _, field := range issue.CustomFields {
+		name := strings.TrimSpace(field.Name)
+		value := strings.TrimSpace(field.Value)
+		if name == "" || value == "" {
+			continue
+		}
+		lines = append(lines, name+": "+value)
 	}
 	return lines
 }
 
 func issueMetadataLine(issue youtrack.Issue) string {
-	fields := issueCustomFields(issue)
 	parts := make([]string, 0, 6)
 	if project := firstNonEmpty(issue.Project.ShortName, issue.Project.Name); project != "" {
 		parts = append(parts, "Project "+project)
@@ -77,7 +38,7 @@ func issueMetadataLine(issue youtrack.Issue) string {
 		{label: "Priority", names: []string{"Priority"}},
 		{label: "Type", names: []string{"Type"}},
 	} {
-		if value := customFieldValue(fields, field.names...); value != "" {
+		if value := issue.CustomFieldValue(field.names...); value != "" {
 			parts = append(parts, field.label+" "+value)
 		}
 	}
@@ -91,48 +52,4 @@ func issueListLine(issue youtrack.Issue) string {
 		return fmt.Sprintf("%-12s %s", issue.IDReadable, issue.Summary)
 	}
 	return fmt.Sprintf("%-12s [%s] %s", issue.IDReadable, state, issue.Summary)
-}
-
-func fieldValue(data json.RawMessage) string {
-	if len(data) == 0 || string(data) == "null" {
-		return ""
-	}
-
-	var text string
-	if err := json.Unmarshal(data, &text); err == nil {
-		return strings.TrimSpace(text)
-	}
-
-	var object struct {
-		Presentation string `json:"presentation"`
-		Name         string `json:"name"`
-		Login        string `json:"login"`
-		Text         string `json:"text"`
-	}
-	if err := json.Unmarshal(data, &object); err == nil {
-		return strings.TrimSpace(firstNonEmpty(object.Presentation, object.Name, object.Login, object.Text))
-	}
-
-	var objects []struct {
-		Presentation string `json:"presentation"`
-		Name         string `json:"name"`
-		Login        string `json:"login"`
-		Text         string `json:"text"`
-	}
-	if err := json.Unmarshal(data, &objects); err == nil {
-		values := make([]string, 0, len(objects))
-		for _, object := range objects {
-			value := strings.TrimSpace(firstNonEmpty(object.Presentation, object.Name, object.Login, object.Text))
-			if value != "" {
-				values = append(values, value)
-			}
-		}
-		return strings.Join(values, ", ")
-	}
-
-	var primitive any
-	if err := json.Unmarshal(data, &primitive); err == nil {
-		return strings.TrimSpace(fmt.Sprint(primitive))
-	}
-	return ""
 }

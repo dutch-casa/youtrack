@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"strconv"
 	"strings"
@@ -981,7 +980,10 @@ func TestIssueDetailRendersCustomFields(t *testing.T) {
 		IDReadable: "ABC-1",
 		Summary:    "One",
 		Project:    youtrack.Project{ShortName: "ABC"},
-		Custom:     []byte(`[{"name":"State","value":{"name":"Open"}},{"name":"Assignee","value":{"login":"jane"}}]`),
+		CustomFields: []youtrack.CustomField{
+			{Name: "State", Value: "Open"},
+			{Name: "Assignee", Value: "jane"},
+		},
 	}}})
 	m = updated.(model)
 
@@ -1002,7 +1004,12 @@ func TestIssueDetailRendersMetadataStrip(t *testing.T) {
 		IDReadable: "ABC-1",
 		Summary:    "One",
 		Project:    youtrack.Project{ShortName: "ABC"},
-		Custom:     []byte(`[{"name":"State","value":{"name":"Open"}},{"name":"Assignee","value":{"login":"jane"}},{"name":"Priority","value":{"presentation":"Major"}},{"name":"Type","value":{"name":"Bug"}}]`),
+		CustomFields: []youtrack.CustomField{
+			{Name: "State", Value: "Open"},
+			{Name: "Assignee", Value: "jane"},
+			{Name: "Priority", Value: "Major"},
+			{Name: "Type", Value: "Bug"},
+		},
 	}}})
 	m = updated.(model)
 
@@ -1017,9 +1024,9 @@ func TestIssueDetailRendersMetadataStrip(t *testing.T) {
 func TestIssueListRendersStateSignal(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{
-		IDReadable: "ABC-1",
-		Summary:    "One",
-		Custom:     []byte(`[{"name":"State","value":{"name":"Open"}}]`),
+		IDReadable:   "ABC-1",
+		Summary:      "One",
+		CustomFields: []youtrack.CustomField{{Name: "State", Value: "Open"}},
 	}}})
 	m = updated.(model)
 
@@ -1077,49 +1084,6 @@ func TestParseWorkItemInputDurationProperty(t *testing.T) {
 	if err := quick.Check(property, nil); err != nil {
 		t.Fatal(err)
 	}
-}
-
-func TestIssueCustomFieldsStringValueProperty(t *testing.T) {
-	property := func(name, value string) bool {
-		name = strings.TrimSpace(name)
-		value = strings.TrimSpace(value)
-		if name == "" || value == "" {
-			return true
-		}
-
-		data, err := json.Marshal([]map[string]any{{
-			"name":  name,
-			"value": value,
-		}})
-		if err != nil {
-			return false
-		}
-		fields := issueCustomFields(youtrack.Issue{Custom: data})
-		return len(fields) == 1 && fields[0].Name == name && fields[0].Value == value
-	}
-	if err := quick.Check(property, nil); err != nil {
-		t.Fatal(err)
-	}
-}
-
-func FuzzIssueCustomFields(f *testing.F) {
-	for _, seed := range []string{
-		`[{"name":"State","value":{"name":"Open"}}]`,
-		`[{"name":"Assignee","value":[{"login":"jane"},{"login":"max"}]}]`,
-		`[{"name":"Priority","value":{"presentation":"Major"}}]`,
-		`not json`,
-		`null`,
-		`[]`,
-	} {
-		f.Add(seed)
-	}
-
-	f.Fuzz(func(t *testing.T, custom string) {
-		issue := youtrack.Issue{Custom: []byte(custom)}
-		_ = issueCustomFields(issue)
-		_ = issueMetadataLine(issue)
-		_ = issueListLine(issue)
-	})
 }
 
 func FuzzParseWorkItemInput(f *testing.F) {

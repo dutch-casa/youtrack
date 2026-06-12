@@ -32,6 +32,7 @@ See also:
 - [0028 TUI Prompt Lifecycle](adr/0028-tui-prompt-lifecycle.md)
 - [0029 Raw Query Parameters](adr/0029-raw-query-parameters.md)
 - [0030 Raw Response Files](adr/0030-raw-response-files.md)
+- [0031 Custom Field Projection Boundary](adr/0031-custom-field-projection-boundary.md)
 
 ## `internal/auth`
 
@@ -43,7 +44,7 @@ Role: Callers ask for usable credentials. The module decides whether to use envi
 
 Secret: This module hides the YouTrack REST API wire shape.
 
-Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, and user actions. The module owns endpoint paths, query fields, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
+Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
 
 ## `internal/ytcli`
 
