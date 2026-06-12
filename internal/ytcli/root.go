@@ -66,6 +66,7 @@ func (a *app) rootCommand(ctx context.Context) *cobra.Command {
 	cmd.AddCommand(a.usersCommand())
 	cmd.AddCommand(a.issuesCommand())
 	cmd.AddCommand(a.commentsCommand())
+	cmd.AddCommand(a.workItemsCommand())
 	cmd.AddCommand(a.commandsCommand())
 	cmd.AddCommand(a.rawCommand())
 	cmd.AddCommand(a.interactiveCommand(ctx))
@@ -429,6 +430,95 @@ func (a *app) commentsCommand() *cobra.Command {
 		Use:     "comments",
 		Aliases: []string{"comment"},
 		Short:   "Work with issue comments",
+	}
+	cmd.AddCommand(list, add)
+	return cmd
+}
+
+func (a *app) workItemsCommand() *cobra.Command {
+	var top int
+	var skip int
+	list := &cobra.Command{
+		Use:   "list ISSUE",
+		Short: "List issue work items",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			items, err := client.WorkItems(cmd.Context(), youtrack.WorkItemListOptions{
+				IssueID: args[0],
+				Top:     top,
+				Skip:    skip,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, items)
+		},
+	}
+	list.Flags().IntVar(&top, "top", 42, "maximum work items to return")
+	list.Flags().IntVar(&skip, "skip", 0, "number of work items to skip")
+
+	var minutes int
+	var text string
+	var textFile string
+	var textStdin bool
+	var typeID string
+	var authorID string
+	var dateMillis int64
+	var mute bool
+	add := &cobra.Command{
+		Use:   "add ISSUE",
+		Short: "Add an issue work item",
+		Args:  cobra.ExactArgs(1),
+		RunE: func(cmd *cobra.Command, args []string) error {
+			if minutes <= 0 {
+				return errors.New("--minutes must be greater than zero")
+			}
+			resolvedText, _, err := textinput.Resolve(textinput.Source{
+				Name:       "work item text",
+				Literal:    text,
+				LiteralSet: cmd.Flags().Changed("text"),
+				File:       textFile,
+				Stdin:      textStdin,
+			}, a.in)
+			if err != nil {
+				return err
+			}
+			client, err := a.client()
+			if err != nil {
+				return err
+			}
+			item, err := client.AddWorkItem(cmd.Context(), youtrack.AddWorkItemRequest{
+				IssueID:    args[0],
+				Minutes:    minutes,
+				Text:       resolvedText,
+				TypeID:     typeID,
+				AuthorID:   authorID,
+				DateMillis: dateMillis,
+				Mute:       mute,
+			})
+			if err != nil {
+				return err
+			}
+			return output.Write(a.out, a.format, item)
+		},
+	}
+	add.Flags().IntVar(&minutes, "minutes", 0, "work item duration in minutes")
+	add.Flags().StringVarP(&text, "text", "t", "", "work item text")
+	add.Flags().StringVar(&textFile, "text-file", "", "read work item text from file")
+	add.Flags().BoolVar(&textStdin, "text-stdin", false, "read work item text from stdin")
+	add.Flags().StringVar(&typeID, "type-id", "", "work item type id")
+	add.Flags().StringVar(&authorID, "author-id", "", "work item author user id")
+	add.Flags().Int64Var(&dateMillis, "date-ms", 0, "work item date as Unix milliseconds")
+	add.Flags().BoolVar(&mute, "mute", false, "request muted update notifications")
+
+	cmd := &cobra.Command{
+		Use:     "work-items",
+		Aliases: []string{"work-item", "time"},
+		Short:   "Work with issue time tracking",
 	}
 	cmd.AddCommand(list, add)
 	return cmd

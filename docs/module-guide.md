@@ -8,6 +8,7 @@ See also:
 - [0004 Charm TUI as Optional Human Mode](adr/0004-charm-tui-as-optional-human-mode.md)
 - [0005 Command API as Workflow Bridge](adr/0005-command-api-as-workflow-bridge.md)
 - [0006 Centralized Text Input](adr/0006-centralized-text-input.md)
+- [0007 Typed Time Tracking](adr/0007-typed-time-tracking.md)
 
 ## `internal/auth`
 

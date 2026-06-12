@@ -183,6 +183,71 @@ func TestApplyCommandRequestBody(t *testing.T) {
 	}
 }
 
+func TestWorkItemsRequestShape(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/timeTracking/workItems" {
+			t.Fatalf("path = %s, want work items path", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("$top"); got != "10" {
+			t.Fatalf("$top = %q", got)
+		}
+		_, _ = w.Write([]byte(`[{"id":"115-1","duration":{"minutes":30,"presentation":"30m"},"text":"review","author":{"login":"jane"}}]`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	items, err := client.WorkItems(context.Background(), WorkItemListOptions{IssueID: "ABC-1", Top: 10})
+	if err != nil {
+		t.Fatalf("WorkItems() error = %v", err)
+	}
+	if len(items) != 1 || items[0].Duration.Minutes != 30 {
+		t.Fatalf("WorkItems() = %#v", items)
+	}
+}
+
+func TestAddWorkItemRequestBody(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/issues/ABC-1/timeTracking/workItems" {
+			t.Fatalf("path = %s, want work items path", r.URL.Path)
+		}
+		if got := r.URL.Query().Get("muteUpdateNotifications"); got != "true" {
+			t.Fatalf("muteUpdateNotifications = %q", got)
+		}
+		var payload map[string]any
+		if err := json.NewDecoder(r.Body).Decode(&payload); err != nil {
+			t.Fatalf("decode body: %v", err)
+		}
+		duration := payload["duration"].(map[string]any)
+		if duration["minutes"] != float64(45) {
+			t.Fatalf("duration.minutes = %v", duration["minutes"])
+		}
+		if payload["text"] != "implementation" {
+			t.Fatalf("text = %v", payload["text"])
+		}
+		workType := payload["type"].(map[string]any)
+		if workType["id"] != "65-1" {
+			t.Fatalf("type.id = %v", workType["id"])
+		}
+		_, _ = w.Write([]byte(`{"id":"115-1","duration":{"minutes":45,"presentation":"45m"},"text":"implementation","type":{"id":"65-1","name":"Development"}}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	item, err := client.AddWorkItem(context.Background(), AddWorkItemRequest{
+		IssueID: "ABC-1",
+		Minutes: 45,
+		Text:    "implementation",
+		TypeID:  "65-1",
+		Mute:    true,
+	})
+	if err != nil {
+		t.Fatalf("AddWorkItem() error = %v", err)
+	}
+	if item.Duration.Minutes != 45 {
+		t.Fatalf("AddWorkItem() = %#v", item)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -220,5 +285,11 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.ApplyCommand(context.Background(), ApplyCommandRequest{IssueID: "ABC-1"}); err == nil {
 		t.Fatal("ApplyCommand() error = nil, want query validation")
+	}
+	if _, err := client.WorkItems(context.Background(), WorkItemListOptions{}); err == nil {
+		t.Fatal("WorkItems() error = nil, want issue id validation")
+	}
+	if _, err := client.AddWorkItem(context.Background(), AddWorkItemRequest{IssueID: "ABC-1"}); err == nil {
+		t.Fatal("AddWorkItem() error = nil, want minutes validation")
 	}
 }

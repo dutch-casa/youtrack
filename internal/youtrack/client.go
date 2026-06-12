@@ -66,6 +66,27 @@ type Comment struct {
 	Updated int64  `json:"updated,omitempty"`
 }
 
+type DurationValue struct {
+	ID           string `json:"id,omitempty"`
+	Minutes      int    `json:"minutes"`
+	Presentation string `json:"presentation,omitempty"`
+}
+
+type WorkItemType struct {
+	ID   string `json:"id,omitempty"`
+	Name string `json:"name,omitempty"`
+}
+
+type WorkItem struct {
+	ID       string        `json:"id"`
+	Text     string        `json:"text,omitempty"`
+	Date     int64         `json:"date,omitempty"`
+	Duration DurationValue `json:"duration"`
+	Type     WorkItemType  `json:"type,omitempty"`
+	Author   User          `json:"author,omitempty"`
+	Creator  User          `json:"creator,omitempty"`
+}
+
 type IssueListOptions struct {
 	Query string
 	Top   int
@@ -99,6 +120,22 @@ type ApplyCommandRequest struct {
 type CommandResult struct {
 	Query  string  `json:"query"`
 	Issues []Issue `json:"issues"`
+}
+
+type WorkItemListOptions struct {
+	IssueID string
+	Top     int
+	Skip    int
+}
+
+type AddWorkItemRequest struct {
+	IssueID    string
+	Minutes    int
+	Text       string
+	TypeID     string
+	AuthorID   string
+	DateMillis int64
+	Mute       bool
 }
 
 type APIError struct {
@@ -238,6 +275,51 @@ func (c *Client) AddComment(ctx context.Context, issueID, text string) (Comment,
 	return comment, err
 }
 
+func (c *Client) WorkItems(ctx context.Context, opts WorkItemListOptions) ([]WorkItem, error) {
+	if strings.TrimSpace(opts.IssueID) == "" {
+		return nil, errors.New("issue id is required")
+	}
+	values := pageValues(PageOptions{Top: opts.Top, Skip: opts.Skip})
+	values.Set("fields", workItemFields)
+
+	var items []WorkItem
+	err := c.get(ctx, "/api/issues/"+url.PathEscape(opts.IssueID)+"/timeTracking/workItems", values, &items)
+	return items, err
+}
+
+func (c *Client) AddWorkItem(ctx context.Context, req AddWorkItemRequest) (WorkItem, error) {
+	if strings.TrimSpace(req.IssueID) == "" {
+		return WorkItem{}, errors.New("issue id is required")
+	}
+	if req.Minutes <= 0 {
+		return WorkItem{}, errors.New("work item minutes must be greater than zero")
+	}
+	body := map[string]any{
+		"duration": map[string]int{"minutes": req.Minutes},
+	}
+	if req.Text != "" {
+		body["text"] = req.Text
+	}
+	if req.TypeID != "" {
+		body["type"] = map[string]string{"id": req.TypeID}
+	}
+	if req.AuthorID != "" {
+		body["author"] = map[string]string{"id": req.AuthorID}
+	}
+	if req.DateMillis > 0 {
+		body["date"] = req.DateMillis
+	}
+
+	values := url.Values{"fields": {workItemFields}}
+	if req.Mute {
+		values.Set("muteUpdateNotifications", "true")
+	}
+
+	var item WorkItem
+	err := c.post(ctx, "/api/issues/"+url.PathEscape(req.IssueID)+"/timeTracking/workItems", values, body, &item)
+	return item, err
+}
+
 func (c *Client) ApplyCommand(ctx context.Context, req ApplyCommandRequest) (CommandResult, error) {
 	if strings.TrimSpace(req.IssueID) == "" {
 		return CommandResult{}, errors.New("issue id is required")
@@ -375,6 +457,7 @@ func decodeAPIError(status int, data []byte) error {
 const issueFields = "id,idReadable,summary,description,resolved,project(shortName,name),customFields(name,value(name,login,presentation,text,isResolved))"
 const projectFields = "id,shortName,name,archived,leader(id,login,name,fullName,email)"
 const userFields = "id,login,name,fullName,email,online,banned"
+const workItemFields = "id,text,date,duration(id,minutes,presentation),type(id,name),author(id,login,name,fullName,email),creator(id,login,name,fullName,email)"
 
 func pageValues(opts PageOptions) url.Values {
 	values := url.Values{}

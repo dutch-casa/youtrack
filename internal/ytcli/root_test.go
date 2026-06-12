@@ -24,6 +24,9 @@ func TestHelpIsAvailableWithoutAuth(t *testing.T) {
 			t.Fatalf("help output missing %q: %q", command, out.String())
 		}
 	}
+	if !strings.Contains(out.String(), "work-items") {
+		t.Fatalf("help output missing work-items: %q", out.String())
+	}
 }
 
 func TestAuthLoginStatusLogout(t *testing.T) {
@@ -102,5 +105,15 @@ func TestCommentAddReadsTextFromStdin(t *testing.T) {
 	}
 	if !strings.Contains(out.String(), "from stdin") {
 		t.Fatalf("output = %q, want stdin comment", out.String())
+	}
+}
+
+func TestWorkItemsAddRequiresPositiveMinutes(t *testing.T) {
+	err := Execute(context.Background(), []string{"work-items", "add", "ABC-1"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("Execute() error = nil, want minutes validation")
+	}
+	if !strings.Contains(err.Error(), "--minutes") {
+		t.Fatalf("Execute() error = %q, want minutes guidance", err.Error())
 	}
 }

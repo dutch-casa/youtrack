@@ -39,6 +39,8 @@ yt issues update ABC-123 --summary 'Fix login redirect after SSO'
 yt comments list ABC-123
 yt comments add ABC-123 --text 'I can reproduce this.'
 yt comments add ABC-123 --text-stdin < ./notes.md
+yt work-items list ABC-123
+yt work-items add ABC-123 --minutes 45 --text 'implementation'
 yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'
 yt raw /api/admin/projects
 ```
