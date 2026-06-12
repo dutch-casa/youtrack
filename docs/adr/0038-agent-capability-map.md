@@ -18,7 +18,7 @@ This discovery must not require YouTrack credentials, otherwise agents cannot pl
 
 ## Decision
 
-Add `yt capabilities` as an auth-free JSON command owned by `internal/ytcli`.
+Add `yt capabilities` as an auth-free JSON command owned by `internal/ytcli`. Also expose memorable aliases such as `yt agent`, `yt contract`, and `yt schema`; these emit the same document and do not create a second contract.
 
 The document uses a schema version and explicitly reports:
 
@@ -31,12 +31,13 @@ The document uses a schema version and explicitly reports:
 - `yt commands apply` as the issue workflow bridge
 - `yt raw` as the complete REST bridge for endpoints permitted by the token
 - `yt interactive` as an additive human browsing surface
+- `agent` guidance that tells callers how to cache the document, avoid help scraping, and choose between typed commands, `commands apply`, and `raw`
 
 Keep the capabilities document hand-authored instead of derived from Cobra command traversal. It is a product contract, not a mirror of implementation flags.
 
 ## Consequences
 
-Agents can call `yt capabilities` once, cache the result, and choose the correct surface without parsing help output. For common calls, they can read required arguments and flags directly from `commandReference`.
+Agents can call `yt capabilities` or `yt agent` once, cache the result by the document's `agent.cacheKey` and `schemaVersion`, and choose the correct surface without parsing help output. For common calls, they can read required arguments and flags directly from `commandReference`.
 
 The command makes the completeness model explicit: typed commands are preferred for common stable work, `commands apply` covers YouTrack command-language issue workflows, and `raw` covers long-tail REST.
 

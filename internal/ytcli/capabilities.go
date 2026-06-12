@@ -19,6 +19,7 @@ type capabilitiesDocument struct {
 	CommandReference  []capabilityCommandSpec `json:"commandReference"`
 	Completeness      []capabilityBridge      `json:"completeness"`
 	Interactive       capabilityInteractive   `json:"interactive"`
+	Agent             capabilityAgent         `json:"agent"`
 	SelectionGuidance []capabilityGuidanceRow `json:"selectionGuidance"`
 }
 
@@ -69,6 +70,14 @@ type capabilityInteractive struct {
 	Sections []string `json:"sections"`
 }
 
+type capabilityAgent struct {
+	CacheKey          string   `json:"cacheKey"`
+	DiscoveryCommand  string   `json:"discoveryCommand"`
+	RecommendedFlow   []string `json:"recommendedFlow"`
+	DoNotScrape       []string `json:"doNotScrape"`
+	CompletenessRules []string `json:"completenessRules"`
+}
+
 type capabilityGuidanceRow struct {
 	Need string `json:"need"`
 	Use  string `json:"use"`
@@ -76,8 +85,9 @@ type capabilityGuidanceRow struct {
 
 func (a *app) capabilitiesCommand() *cobra.Command {
 	return &cobra.Command{
-		Use:   "capabilities",
-		Short: "Describe the YouTrack CLI capability surface for agents",
+		Use:     "capabilities",
+		Aliases: []string{"agent", "contract", "schema"},
+		Short:   "Describe the YouTrack CLI capability surface for agents",
 		RunE: func(cmd *cobra.Command, args []string) error {
 			return output.Write(a.out, a.format, newCapabilitiesDocument())
 		},
@@ -161,6 +171,27 @@ func newCapabilitiesDocument() capabilitiesDocument {
 				"agile boards",
 				"projects",
 				"users",
+			},
+		},
+		Agent: capabilityAgent{
+			CacheKey:         "yt-capabilities-v1",
+			DiscoveryCommand: "yt capabilities",
+			RecommendedFlow: []string{
+				"Call yt capabilities once per installed CLI version or schemaVersion and cache the JSON.",
+				"Use commandReference instead of invoking --help to choose args, flags, auth requirements, mutability, output shape, and examples.",
+				"Use first-class typed commands for stable common workflows.",
+				"Use yt commands apply for broad issue workflows that match YouTrack's command input.",
+				"Use yt raw for long-tail REST endpoints, self-hosted custom endpoints, binary downloads, or newly released YouTrack surfaces.",
+			},
+			DoNotScrape: []string{
+				"Do not parse Cobra help output for automation.",
+				"Do not infer table output; JSON is the default machine contract.",
+				"Do not prompt for credentials in non-interactive runs; use yt auth login --url --token or YOUTRACK_URL/YOUTRACK_TOKEN.",
+			},
+			CompletenessRules: []string{
+				"If a workflow has a first-class command, prefer it.",
+				"If a workflow is an issue command a human would type in YouTrack, use yt commands apply.",
+				"If the REST API token can do it and no first-class command exists, use yt raw.",
 			},
 		},
 		SelectionGuidance: []capabilityGuidanceRow{

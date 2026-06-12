@@ -83,6 +83,12 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 			Command  string   `json:"command"`
 			Sections []string `json:"sections"`
 		} `json:"interactive"`
+		Agent struct {
+			CacheKey         string   `json:"cacheKey"`
+			DiscoveryCommand string   `json:"discoveryCommand"`
+			RecommendedFlow  []string `json:"recommendedFlow"`
+			DoNotScrape      []string `json:"doNotScrape"`
+		} `json:"agent"`
 	}
 	if err := json.Unmarshal(out.Bytes(), &doc); err != nil {
 		t.Fatalf("capabilities output is not JSON: %v; output %q", err, out.String())
@@ -122,6 +128,21 @@ func TestCapabilitiesIsAvailableWithoutAuth(t *testing.T) {
 	}
 	if doc.Interactive.Command != "yt interactive" || !containsString(doc.Interactive.Sections, "knowledge base") {
 		t.Fatalf("interactive capabilities = %#v, want knowledge base section", doc.Interactive)
+	}
+	if doc.Agent.CacheKey == "" || doc.Agent.DiscoveryCommand != "yt capabilities" || len(doc.Agent.RecommendedFlow) == 0 || len(doc.Agent.DoNotScrape) == 0 {
+		t.Fatalf("agent capabilities = %#v, want cacheable discovery guidance", doc.Agent)
+	}
+}
+
+func TestAgentAliasEmitsCapabilities(t *testing.T) {
+	config := filepath.Join(t.TempDir(), "missing.json")
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{"--config", config, "agent"}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("agent alias error = %v", err)
+	}
+	if !strings.Contains(out.String(), `"schemaVersion"`) || !strings.Contains(out.String(), `"agent"`) {
+		t.Fatalf("agent alias output = %q, want capabilities document", out.String())
 	}
 }
 

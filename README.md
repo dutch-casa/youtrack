@@ -99,7 +99,7 @@ yt raw /api/files/123 --output-file ./download.bin
 
 JSON is the default. Use `--format table` for human-readable output.
 
-Use `yt capabilities` or `youtrack capabilities` as the machine-readable contract for agents. It runs without authentication and describes the default mode, supported command names, first-class commands, the interactive TUI, and the completeness bridges for YouTrack command-language workflows and raw REST calls.
+Use `yt capabilities`, `yt agent`, or `youtrack capabilities` as the machine-readable contract for agents. It runs without authentication and describes the default mode, supported command names, first-class commands, the interactive TUI, and the completeness bridges for YouTrack command-language workflows and raw REST calls. Agents should call it once per installed CLI version or `schemaVersion`, cache the JSON by `agent.cacheKey`, and use `commandReference` instead of scraping `--help`.
 
 `yt commands apply` is the high-leverage bridge to YouTrack's own command language. Use it for issue operations that humans normally perform through command input in the UI, including assignment, state changes, tags, links, watchers, and similar workflow actions, subject to the token's permissions.
 
