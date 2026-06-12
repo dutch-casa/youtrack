@@ -14,6 +14,7 @@ import (
 type Options struct {
 	Query string
 	Top   int
+	Skip  int
 }
 
 type Client interface {
@@ -218,12 +219,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 				m.detail.GotoTop()
 				return m.withSelectedPaneLoading()
 			}
+		case "n":
+			if !m.loading && len(m.issues) > 0 {
+				m.opts.Skip += m.opts.Top
+				m.selected = 0
+				return m.withIssueListLoading("Loading next page...")
+			}
+		case "p":
+			if !m.loading && m.opts.Skip > 0 {
+				m.opts.Skip = max(0, m.opts.Skip-m.opts.Top)
+				m.selected = 0
+				return m.withIssueListLoading("Loading previous page...")
+			}
 		case "r":
-			m.loading = true
-			m.err = nil
-			m.detail.GotoTop()
-			m.clearPaneCaches()
-			m.status = ""
 			m.commandErr = nil
 			m.inputMode = modeNavigation
 			m.commandRunning = false
@@ -233,7 +241,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.queryInput.Blur()
 			m.queryInput.Reset()
 			m.queryInput.SetValue("")
-			return m, m.loadIssues
+			return m.withIssueListLoading("")
 		}
 	case issuesMsg:
 		m.loading = false
@@ -375,14 +383,10 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.queryInput.Reset()
 		m.queryInput.SetValue("")
 		m.opts.Query = query
+		m.opts.Skip = 0
 		m.selected = 0
-		m.loading = true
-		m.err = nil
-		m.detail.GotoTop()
-		m.clearPaneCaches()
-		m.status = "Loading query..."
 		m.commandErr = nil
-		return m, m.loadIssues
+		return m.withIssueListLoading("Loading query...")
 	}
 	var cmd tea.Cmd
 	m.queryInput, cmd = m.queryInput.Update(msg)
@@ -390,8 +394,17 @@ func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) loadIssues() tea.Msg {
-	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.opts.Query, Top: m.opts.Top})
+	issues, err := m.client.Issues(m.ctx, youtrack.IssueListOptions{Query: m.opts.Query, Top: m.opts.Top, Skip: m.opts.Skip})
 	return issuesMsg{issues: issues, err: err}
+}
+
+func (m model) withIssueListLoading(status string) (tea.Model, tea.Cmd) {
+	m.loading = true
+	m.err = nil
+	m.detail.GotoTop()
+	m.clearPaneCaches()
+	m.status = status
+	return m, m.loadIssues
 }
 
 func (m *model) clearPaneCaches() {

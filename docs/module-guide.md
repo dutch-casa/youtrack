@@ -22,6 +22,7 @@ See also:
 - [0018 Raw Request Content Type](adr/0018-raw-request-content-type.md)
 - [0019 TUI Query Refinement](adr/0019-tui-query-refinement.md)
 - [0020 TUI Input Mode State](adr/0020-tui-input-mode-state.md)
+- [0021 TUI Issue Pagination](adr/0021-tui-issue-pagination.md)
 
 ## `internal/auth`
 

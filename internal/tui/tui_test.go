@@ -346,7 +346,7 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{
 		issues:        []youtrack.Issue{{IDReadable: "ABC-3", Summary: "Three"}},
 		issueRequests: &issueRequests,
-	}, Options{Query: "project: ABC", Top: 25})
+	}, Options{Query: "project: ABC", Top: 25, Skip: 50})
 	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{
 		{IDReadable: "ABC-1", Summary: "One"},
 		{IDReadable: "ABC-2", Summary: "Two"},
@@ -376,6 +376,9 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 	if m.opts.Query != "project: DEF #Unresolved" {
 		t.Fatalf("query = %q, want updated query", m.opts.Query)
 	}
+	if m.opts.Skip != 0 {
+		t.Fatalf("skip = %d, want reset to first page", m.opts.Skip)
+	}
 	if m.selected != 0 {
 		t.Fatalf("selected = %d, want reset to first issue", m.selected)
 	}
@@ -387,11 +390,67 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 	if msg.err != nil {
 		t.Fatalf("reload error = %v", msg.err)
 	}
-	if len(issueRequests) != 1 || issueRequests[0].Query != "project: DEF #Unresolved" || issueRequests[0].Top != 25 {
+	if len(issueRequests) != 1 || issueRequests[0].Query != "project: DEF #Unresolved" || issueRequests[0].Top != 25 || issueRequests[0].Skip != 0 {
 		t.Fatalf("issue requests = %#v, want updated query and top", issueRequests)
 	}
 	if len(msg.issues) != 1 || msg.issues[0].IDReadable != "ABC-3" {
 		t.Fatalf("reload issues = %#v, want fake client issues", msg.issues)
+	}
+}
+
+func TestIssuePagingUsesSkip(t *testing.T) {
+	var issueRequests []youtrack.IssueListOptions
+	m := newModel(context.Background(), fakeClient{
+		issues:        []youtrack.Issue{{IDReadable: "ABC-11", Summary: "Eleven"}},
+		issueRequests: &issueRequests,
+	}, Options{Query: "project: ABC", Top: 10})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{
+		{IDReadable: "ABC-1", Summary: "One"},
+		{IDReadable: "ABC-2", Summary: "Two"},
+	}})
+	m = updated.(model)
+	m.selected = 1
+	m.comments["ABC-2"] = []youtrack.Comment{{ID: "c-1", Text: "stale"}}
+
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("next page command = nil")
+	}
+	if m.opts.Skip != 10 {
+		t.Fatalf("skip = %d, want next page skip", m.opts.Skip)
+	}
+	if m.selected != 0 {
+		t.Fatalf("selected = %d, want reset to first issue", m.selected)
+	}
+	if len(m.comments) != 0 {
+		t.Fatalf("comments cache = %#v, want cleared cache", m.comments)
+	}
+
+	msg := cmd().(issuesMsg)
+	if msg.err != nil {
+		t.Fatalf("next page error = %v", msg.err)
+	}
+	if len(issueRequests) != 1 || issueRequests[0].Skip != 10 || issueRequests[0].Top != 10 || issueRequests[0].Query != "project: ABC" {
+		t.Fatalf("issue requests = %#v, want next page request", issueRequests)
+	}
+	if len(msg.issues) != 1 || msg.issues[0].IDReadable != "ABC-11" {
+		t.Fatalf("next issues = %#v, want fake next page issues", msg.issues)
+	}
+
+	updated, _ = m.Update(issuesMsg{issues: msg.issues})
+	m = updated.(model)
+	updated, cmd = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'p'}})
+	m = updated.(model)
+	if cmd == nil {
+		t.Fatal("previous page command = nil")
+	}
+	if m.opts.Skip != 0 {
+		t.Fatalf("skip = %d, want previous page skip", m.opts.Skip)
+	}
+	_ = cmd()
+	if len(issueRequests) != 2 || issueRequests[1].Skip != 0 {
+		t.Fatalf("issue requests = %#v, want previous page request", issueRequests)
 	}
 }
 

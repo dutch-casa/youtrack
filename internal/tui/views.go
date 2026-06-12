@@ -37,7 +37,11 @@ func (m model) issueList(width, height int) string {
 	if len(m.issues) > 0 {
 		position = min(max(m.selected, 0), len(m.issues)-1) + 1
 	}
-	title := titleStyle.Render(fmt.Sprintf("Issues %d/%d", position, len(m.issues)))
+	titleText := fmt.Sprintf("Issues %d/%d", position, len(m.issues))
+	if m.opts.Skip > 0 {
+		titleText = fmt.Sprintf("Issues %d/%d skip %d", position, len(m.issues), m.opts.Skip)
+	}
+	title := titleStyle.Render(titleText)
 	rows = append(rows, title)
 	for i, issue := range m.issues[start:end] {
 		index := start + i
@@ -236,10 +240,10 @@ func (m model) footer() string {
 		return commandStyle.Render(m.queryInput.View())
 	}
 	if m.commandErr != nil {
-		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render("/ query  : command  esc cancel  q quit")
+		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render("/ query  n/p page  : command  esc cancel  q quit")
 	}
 	if m.status != "" {
-		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  : command  tab panes  r refresh  q quit")
+		return statusStyle.Render(m.status) + "  " + helpStyle.Render("/ query  n/p page  : command  tab panes  r refresh  q quit")
 	}
-	return helpStyle.Render("j/k move  / query  tab details/comments/links/activity/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
+	return helpStyle.Render("j/k move  / query  n/p page  tab details/comments/links/activity/attachments  pgup/pgdn scroll  : command  g/G top/bottom  r refresh  q quit")
 }
