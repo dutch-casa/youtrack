@@ -192,6 +192,8 @@ type model struct {
 	links        map[string][]youtrack.IssueLink
 	linksLoading bool
 	linksErr     error
+
+	projectFilterSource section
 }
 
 type issuesMsg struct {
@@ -791,6 +793,7 @@ func (m model) updateProjectInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m.withResourceListLoading(status)
 		}
 		m.projectFilter = project
+		m.projectFilterSource = sectionIssues
 		m.opts.Skip = 0
 		m.selected = 0
 		m.clearActionErrors()
@@ -834,6 +837,7 @@ func (m model) updateIssueInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.projectFilter = ""
+		m.projectFilterSource = sectionIssues
 		m.opts.Query = issueID
 		m.opts.Skip = 0
 		m.selected = 0
@@ -855,6 +859,7 @@ func (m model) openSelectedHelpdeskTickets() (tea.Model, tea.Cmd) {
 		return m, nil
 	}
 	m.projectFilter = project
+	m.projectFilterSource = sectionHelpdesk
 	m.opts.Skip = 0
 	m.selected = 0
 	m.pane = detailsPane
@@ -1186,6 +1191,7 @@ func (m model) updateProjectMouse(event tea.MouseEvent) (tea.Model, tea.Cmd) {
 		project := m.selectedProjectFilter()
 		m.closeProjectPrompt()
 		m.projectFilter = project
+		m.projectFilterSource = sectionIssues
 		m.opts.Skip = 0
 		m.selected = 0
 		if project == "" {

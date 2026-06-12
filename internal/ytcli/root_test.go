@@ -425,6 +425,73 @@ func TestAuthLoginPromptVerifiesWithBearerToken(t *testing.T) {
 	}
 }
 
+func TestHelpdeskTicketsRejectNonHelpdeskProject(t *testing.T) {
+	issueCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/admin/projects":
+			_, _ = w.Write([]byte(`[
+				{"id":"0-1","shortName":"ABC","name":"Alpha","projectType":{"name":"standard"}},
+				{"id":"0-2","shortName":"SUP","name":"Support","projectType":{"name":"helpdesk"}}
+			]`))
+		case "/api/issues":
+			issueCalls++
+			_, _ = w.Write([]byte(`[]`))
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	err := Execute(context.Background(), []string{"helpdesk", "tickets", "ABC"}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err == nil {
+		t.Fatal("helpdesk tickets error = nil, want project guidance")
+	}
+	if !strings.Contains(err.Error(), "yt helpdesk projects") || !strings.Contains(err.Error(), "yt issues list") {
+		t.Fatalf("helpdesk tickets error = %q, want direct next actions", err.Error())
+	}
+	if issueCalls != 0 {
+		t.Fatalf("issue calls = %d, want no ticket query for wrong project type", issueCalls)
+	}
+}
+
+func TestHelpdeskTicketsListHelpdeskProjectIssues(t *testing.T) {
+	issueCalls := 0
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/api/admin/projects":
+			_, _ = w.Write([]byte(`[
+				{"id":"0-2","shortName":"SUP","name":"Support","projectType":{"name":"helpdesk"}}
+			]`))
+		case "/api/issues":
+			issueCalls++
+			if got := r.URL.Query().Get("query"); got != "project: SUP #Unresolved" {
+				t.Fatalf("query = %q, want project-scoped help desk query", got)
+			}
+			_, _ = w.Write([]byte(`[{"id":"1","idReadable":"SUP-1","summary":"Needs help","project":{"shortName":"SUP"}}]`))
+		default:
+			t.Fatalf("unexpected path = %q", r.URL.Path)
+		}
+	}))
+	t.Cleanup(server.Close)
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	var out bytes.Buffer
+	err := Execute(context.Background(), []string{"helpdesk", "tickets", "SUP", "--query", "#Unresolved"}, strings.NewReader(""), &out, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("helpdesk tickets error = %v", err)
+	}
+	if issueCalls != 1 {
+		t.Fatalf("issue calls = %d, want one ticket query", issueCalls)
+	}
+	if !strings.Contains(out.String(), "SUP-1") || !strings.Contains(out.String(), "Needs help") {
+		t.Fatalf("output = %q, want help desk tickets", out.String())
+	}
+}
+
 func TestAuthLoginDoesNotSaveFailedVerification(t *testing.T) {
 	config := filepath.Join(t.TempDir(), "config.json")
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

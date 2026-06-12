@@ -655,6 +655,30 @@ func TestHelpdeskFooterShowsTicketAction(t *testing.T) {
 	if !strings.Contains(footer, "enter tickets") {
 		t.Fatalf("footer = %q, want enter tickets action", footer)
 	}
+	if !strings.Contains(footer, "/ projects") {
+		t.Fatalf("footer = %q, want project filtering guidance", footer)
+	}
+}
+
+func TestHelpdeskResourcePaneExplainsEmptyProjects(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.section = sectionHelpdesk
+
+	content := stripANSI(m.resourcePane(80, 12))
+	if !strings.Contains(content, "No help desk projects") {
+		t.Fatalf("content = %q, want help desk project guidance", content)
+	}
+}
+
+func TestHelpdeskIssuePaneExplainsEmptyTickets(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.projectFilter = "SUP"
+	m.projectFilterSource = sectionHelpdesk
+
+	content := stripANSI(m.issuePaneContent(80))
+	if !strings.Contains(content, "No help desk tickets for project SUP") || !strings.Contains(content, "yt helpdesk tickets SUP") {
+		t.Fatalf("content = %q, want help desk ticket guidance", content)
+	}
 }
 
 func TestAgileFooterShowsSprintAction(t *testing.T) {

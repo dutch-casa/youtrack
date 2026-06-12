@@ -53,6 +53,7 @@ func resourceKeyMap() tuiKeyMap {
 
 func helpdeskKeyMap() tuiKeyMap {
 	keys := resourceKeyMap()
+	keys.Search = key.NewBinding(key.WithKeys("/"), key.WithHelp("/", "projects"))
 	keys.Action = key.NewBinding(key.WithKeys("enter"), key.WithHelp("enter", "tickets"))
 	return keys
 }

@@ -324,7 +324,7 @@ func (s section) title() string {
 	case sectionKnowledge:
 		return "Knowledge Base"
 	case sectionHelpdesk:
-		return "Help Desk"
+		return "Help Desk Projects"
 	case sectionAgile:
 		return "Agile Boards"
 	case sectionProjects:

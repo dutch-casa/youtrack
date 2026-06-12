@@ -46,6 +46,7 @@ See also:
 - [0042 Issue-Backed Helpdesk Surface](adr/0042-issue-backed-helpdesk-surface.md)
 - [0043 Terminal Markdown Image Previews](adr/0043-terminal-markdown-image-previews.md)
 - [0047 Top-Level Uninstall Command](adr/0047-top-level-uninstall-command.md)
+- [0048 Help Desk Ticket Guidance](adr/0048-help-desk-ticket-guidance.md)
 
 ## `internal/auth`
 

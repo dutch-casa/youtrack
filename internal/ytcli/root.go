@@ -406,7 +406,25 @@ func (a *app) helpdeskCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			issueQuery := strings.TrimSpace("project: " + args[0] + " " + query)
+			projectName := strings.TrimSpace(args[0])
+			projects, err := client.Projects(cmd.Context(), youtrack.PageOptions{Top: 1000})
+			if err != nil {
+				return err
+			}
+			var project *youtrack.Project
+			for i := range projects {
+				if strings.EqualFold(projects[i].ShortName, projectName) {
+					project = &projects[i]
+					break
+				}
+			}
+			if project == nil {
+				return fmt.Errorf("help desk project %q not found; run `yt helpdesk projects` to list help desk projects or `yt issues list --query 'project: %s ...'` for a regular project", projectName, projectName)
+			}
+			if !strings.EqualFold(project.ProjectType.Name, "helpdesk") {
+				return fmt.Errorf("project %q is not a help desk project; run `yt helpdesk projects` for help desk project keys or `yt issues list --query 'project: %s ...'` for a regular project", projectName, projectName)
+			}
+			issueQuery := strings.TrimSpace("project: " + projectName + " " + query)
 			issues, err := client.Issues(cmd.Context(), youtrack.IssueListOptions{Query: issueQuery, Top: ticketTop, Skip: ticketSkip})
 			if err != nil {
 				return err

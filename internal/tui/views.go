@@ -207,6 +207,9 @@ func (m model) issuePane(width, height int) string {
 
 func (m model) resourcePane(width, height int) string {
 	if len(m.resources) == 0 {
+		if m.section == sectionHelpdesk {
+			return m.renderDetailViewport("No help desk projects.\n\nUse / to filter projects, enter to open tickets, or `yt helpdesk projects` in the CLI.", width, height)
+		}
 		return m.renderDetailViewport("No "+strings.ToLower(m.section.title()), width, height)
 	}
 	selected := min(max(m.resourceSelected, 0), len(m.resources)-1)
@@ -224,7 +227,13 @@ func (m model) resourcePane(width, height int) string {
 
 func (m model) issuePaneContent(width int) string {
 	if len(m.issues) == 0 {
-		return "No issues"
+		if m.projectFilter != "" {
+			if m.projectFilterSource == sectionHelpdesk {
+				return "No help desk tickets for project " + m.projectFilter + ".\n\nUse `yt helpdesk tickets " + m.projectFilter + "` or `/` to refine the ticket query."
+			}
+			return "No issues for project " + m.projectFilter + ".\n\nUse `yt issues list --query 'project: " + m.projectFilter + "'` or `/` to refine the query."
+		}
+		return "No issues.\n\nUse `yt issues list --query '...'` to search directly from the CLI."
 	}
 	switch m.pane {
 	case commentsPane:
