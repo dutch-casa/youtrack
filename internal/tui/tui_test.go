@@ -456,11 +456,11 @@ func TestArticleResourcesUseMarkdownSource(t *testing.T) {
 	if strings.Contains(resource.Body, "\x1b[") {
 		t.Fatalf("article body contains ANSI before markdown rendering: %q", resource.Body)
 	}
-	if !strings.HasPrefix(resource.Body, "# Token setup") {
-		t.Fatalf("article body = %q, want title-first markdown heading", resource.Body)
+	if !strings.HasPrefix(resource.Body, "# KB-1 Token setup") {
+		t.Fatalf("article body = %q, want article code and title in markdown heading", resource.Body)
 	}
 	rendered := stripANSI(renderMarkdown(resource.Body, 72))
-	for _, want := range []string{"Token setup", "Article: KB-1", "Project: SUP", "Author: jane", "tab", "account security"} {
+	for _, want := range []string{"KB-1 Token setup", "Article: KB-1", "Project: SUP", "Author: jane", "tab", "account security"} {
 		if !strings.Contains(rendered, want) {
 			t.Fatalf("rendered article = %q, want %q", rendered, want)
 		}
