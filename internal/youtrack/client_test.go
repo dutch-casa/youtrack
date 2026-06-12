@@ -450,6 +450,32 @@ func TestAttachmentContentUsesThumbnailURL(t *testing.T) {
 	}
 }
 
+func TestFileContentDownloadsSameOriginBytes(t *testing.T) {
+	const image = "image bytes"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/youtrack/api/files/image.png" {
+			t.Fatalf("path = %s, want file path", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:test" {
+			t.Fatalf("authorization = %q, want bearer token", got)
+		}
+		_, _ = w.Write([]byte(image))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/youtrack", "perm:test", server.Client())
+	data, err := client.FileContent(context.Background(), FileContentRequest{
+		URL:      "/youtrack/api/files/image.png",
+		MaxBytes: 1024,
+	})
+	if err != nil {
+		t.Fatalf("FileContent() error = %v", err)
+	}
+	if string(data) != image {
+		t.Fatalf("FileContent() = %q, want image bytes", string(data))
+	}
+}
+
 func TestAttachmentContentResolvesBaseRelativeURL(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/youtrack/api/files/preview.png" {

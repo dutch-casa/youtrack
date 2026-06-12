@@ -283,6 +283,11 @@ type AttachmentContentRequest struct {
 	MaxBytes   int64
 }
 
+type FileContentRequest struct {
+	URL      string
+	MaxBytes int64
+}
+
 type ActivityListOptions struct {
 	IssueID    string
 	Categories []string
@@ -633,20 +638,28 @@ func (c *Client) AttachmentContent(ctx context.Context, req AttachmentContentReq
 	if rawURL == "" {
 		return nil, errors.New("attachment url is required")
 	}
-	endpoint, err := c.attachmentEndpoint(rawURL)
+	return c.FileContent(ctx, FileContentRequest{URL: rawURL, MaxBytes: req.MaxBytes})
+}
+
+func (c *Client) FileContent(ctx context.Context, req FileContentRequest) ([]byte, error) {
+	rawURL := strings.TrimSpace(req.URL)
+	if rawURL == "" {
+		return nil, errors.New("file url is required")
+	}
+	endpoint, err := c.fileEndpoint(rawURL)
 	if err != nil {
 		return nil, err
 	}
 	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
 	if err != nil {
-		return nil, fmt.Errorf("create attachment request: %w", err)
+		return nil, fmt.Errorf("create file request: %w", err)
 	}
 	httpReq.Header.Set("Accept", "*/*")
 	httpReq.Header.Set("Authorization", "Bearer "+c.token)
 
 	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
-		return nil, fmt.Errorf("download attachment: %w", err)
+		return nil, fmt.Errorf("download file: %w", err)
 	}
 	defer resp.Body.Close()
 	data, err := readLimited(resp.Body, req.MaxBytes)
@@ -904,7 +917,7 @@ func (c *Client) newRequest(ctx context.Context, method, path string, values url
 	return req, nil
 }
 
-func (c *Client) attachmentEndpoint(rawURL string) (string, error) {
+func (c *Client) fileEndpoint(rawURL string) (string, error) {
 	if c.baseURL == "" {
 		return "", errors.New("youtrack base url is empty")
 	}
@@ -914,7 +927,7 @@ func (c *Client) attachmentEndpoint(rawURL string) (string, error) {
 	}
 	endpoint, err := url.Parse(rawURL)
 	if err != nil {
-		return "", fmt.Errorf("parse attachment url: %w", err)
+		return "", fmt.Errorf("parse file url: %w", err)
 	}
 	if !endpoint.IsAbs() {
 		endpoint.Scheme = base.Scheme
@@ -926,11 +939,11 @@ func (c *Client) attachmentEndpoint(rawURL string) (string, error) {
 		}
 	}
 	if endpoint.Scheme != base.Scheme || endpoint.Host != base.Host {
-		return "", errors.New("attachment url must use the YouTrack base origin")
+		return "", errors.New("file url must use the YouTrack base origin")
 	}
 	basePath := strings.TrimRight(base.Path, "/")
 	if basePath != "" && endpoint.Path != basePath && !strings.HasPrefix(endpoint.Path, basePath+"/") {
-		return "", errors.New("attachment url must be under the YouTrack base path")
+		return "", errors.New("file url must be under the YouTrack base path")
 	}
 	return endpoint.String(), nil
 }

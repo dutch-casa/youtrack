@@ -89,6 +89,10 @@ func (f fakeClient) AttachmentContent(ctx context.Context, req youtrack.Attachme
 	return f.attachmentContent, f.err
 }
 
+func (f fakeClient) FileContent(ctx context.Context, req youtrack.FileContentRequest) ([]byte, error) {
+	return f.attachmentContent, f.err
+}
+
 func (f fakeClient) Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error) {
 	return f.activities, f.err
 }
@@ -456,6 +460,19 @@ func TestMarkdownRenderingNormalizesYouTrackImageMarkup(t *testing.T) {
 	}
 }
 
+func TestMarkdownRenderingRendersInlineImagePreview(t *testing.T) {
+	rendered := renderMarkdownWithImages("Before\n\n/image.png{width=70%}\n\nAfter", 72, map[string]attachmentPreview{
+		"/image.png": {Data: []byte("png bytes")},
+	}, imageProtocolITerm)
+	plain := stripANSI(rendered)
+	if strings.Contains(plain, "{width=70%}") {
+		t.Fatalf("renderMarkdownWithImages() = %q, want YouTrack image attributes hidden", rendered)
+	}
+	if !strings.Contains(rendered, "\x1b]1337;File=") {
+		t.Fatalf("renderMarkdownWithImages() = %q, want iTerm inline image escape", rendered)
+	}
+}
+
 func TestArticleResourcesUseMarkdownSource(t *testing.T) {
 	resources := articleResources([]youtrack.Article{{
 		IDReadable: "KB-1",
@@ -697,6 +714,41 @@ func TestDetectImageProtocolDetectsGhostty(t *testing.T) {
 
 	if protocol := detectImageProtocol(); protocol != imageProtocolKitty {
 		t.Fatalf("detectImageProtocol() = %q, want kitty", protocol)
+	}
+}
+
+func TestViewClearsInlineImagesBeforeRender(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.imageProtocol = imageProtocolKitty
+
+	view := m.View()
+	if !strings.HasPrefix(view, "\x1b_Ga=d,d=A\x1b\\") {
+		t.Fatalf("View() = %q, want kitty image clear prefix", view)
+	}
+}
+
+func TestSelectedResourceLoadsMarkdownPreviews(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	m.imageProtocol = imageProtocolKitty
+	m.section = sectionKnowledge
+	m.resources = []resourceItem{{
+		ID:           "KB-1",
+		Title:        "Article",
+		Body:         "/image.png{width=70%}",
+		BodyMarkdown: true,
+	}}
+
+	cmd := m.loadSelectedResourceMarkdownPreviews()
+	if cmd == nil {
+		t.Fatal("markdown preview command = nil")
+	}
+	msg := cmd()
+	preview, ok := msg.(markdownPreviewMsg)
+	if !ok {
+		t.Fatalf("preview msg = %T, want markdownPreviewMsg", msg)
+	}
+	if preview.resourceID != "KB-1" || preview.url != "/image.png" {
+		t.Fatalf("preview msg = %#v, want KB-1 /image.png", preview)
 	}
 }
 

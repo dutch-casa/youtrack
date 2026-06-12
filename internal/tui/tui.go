@@ -32,6 +32,7 @@ type Client interface {
 	Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error)
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
 	AttachmentContent(ctx context.Context, req youtrack.AttachmentContentRequest) ([]byte, error)
+	FileContent(ctx context.Context, req youtrack.FileContentRequest) ([]byte, error)
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
 	IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error)
 	WorkItems(ctx context.Context, opts youtrack.WorkItemListOptions) ([]youtrack.WorkItem, error)
@@ -163,6 +164,7 @@ type model struct {
 
 	attachments        map[string][]youtrack.Attachment
 	attachmentPreviews map[string]map[string]attachmentPreview
+	markdownPreviews   map[string]map[string]attachmentPreview
 	attachmentsLoading bool
 	attachmentsErr     error
 	imageProtocol      imageProtocol
@@ -218,6 +220,13 @@ type attachmentPreviewMsg struct {
 	attachmentID string
 	data         []byte
 	err          error
+}
+
+type markdownPreviewMsg struct {
+	resourceID string
+	url        string
+	data       []byte
+	err        error
 }
 
 type activitiesMsg struct {
@@ -285,6 +294,7 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 		comments:           make(map[string][]youtrack.Comment),
 		attachments:        make(map[string][]youtrack.Attachment),
 		attachmentPreviews: make(map[string]map[string]attachmentPreview),
+		markdownPreviews:   make(map[string]map[string]attachmentPreview),
 		imageProtocol:      detectImageProtocol(),
 		activities:         make(map[string][]youtrack.Activity),
 		workItems:          make(map[string][]youtrack.WorkItem),
@@ -424,6 +434,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.resourceSelected = max(0, len(m.resources)-1)
 		}
 		m.detail.GotoTop()
+		return m, m.loadSelectedResourceMarkdownPreviews()
 	case projectOptionsMsg:
 		m.projectOptionsLoading = false
 		m.projectOptionsErr = msg.err
@@ -462,6 +473,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.attachmentPreviews[msg.issueID] = make(map[string]attachmentPreview)
 		}
 		m.attachmentPreviews[msg.issueID][msg.attachmentID] = attachmentPreview{Data: msg.data, Err: msg.err}
+	case markdownPreviewMsg:
+		if _, ok := m.markdownPreviews[msg.resourceID]; !ok {
+			m.markdownPreviews[msg.resourceID] = make(map[string]attachmentPreview)
+		}
+		m.markdownPreviews[msg.resourceID][msg.url] = attachmentPreview{Data: msg.data, Err: msg.err}
 	case activitiesMsg:
 		if m.currentIssueID() == msg.issueID {
 			m.activitiesLoading = false
@@ -902,9 +918,13 @@ func (m model) moveSelection(delta int) (tea.Model, tea.Cmd) {
 	if len(m.resources) == 0 {
 		return m, nil
 	}
-	m.resourceSelected = min(max(m.resourceSelected+delta, 0), len(m.resources)-1)
+	next := min(max(m.resourceSelected+delta, 0), len(m.resources)-1)
+	if next == m.resourceSelected {
+		return m, nil
+	}
+	m.resourceSelected = next
 	m.detail.GotoTop()
-	return m, nil
+	return m, m.loadSelectedResourceMarkdownPreviews()
 }
 
 func (m *model) selectFirst() {
@@ -931,7 +951,7 @@ func (m model) withCurrentSelectionLoading() (tea.Model, tea.Cmd) {
 	if m.section == sectionIssues {
 		return m.withSelectedPaneLoading()
 	}
-	return m, nil
+	return m, m.loadSelectedResourceMarkdownPreviews()
 }
 
 func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
@@ -1205,6 +1225,40 @@ func (m model) loadAttachmentPreview(issueID, attachmentID string, attachment yo
 	return func() tea.Msg {
 		data, err := m.client.AttachmentContent(m.ctx, youtrack.AttachmentContentRequest{Attachment: attachment, MaxBytes: maxInlineImageBytes})
 		return attachmentPreviewMsg{issueID: issueID, attachmentID: attachmentID, data: data, err: err}
+	}
+}
+
+func (m model) loadSelectedResourceMarkdownPreviews() tea.Cmd {
+	if m.imageProtocol == imageProtocolNone || len(m.resources) == 0 {
+		return nil
+	}
+	selected := min(max(m.resourceSelected, 0), len(m.resources)-1)
+	resource := m.resources[selected]
+	if !resource.BodyMarkdown {
+		return nil
+	}
+	resourceID := firstNonEmpty(resource.ID, resource.Title)
+	if resourceID == "" {
+		return nil
+	}
+	refs := markdownImageRefs(markdownSource(resource.Body))
+	if len(refs) == 0 {
+		return nil
+	}
+	commands := make([]tea.Cmd, 0, len(refs))
+	for _, ref := range refs {
+		if _, ok := m.markdownPreviews[resourceID][ref.URL]; ok {
+			continue
+		}
+		commands = append(commands, m.loadMarkdownPreview(resourceID, ref.URL))
+	}
+	return tea.Batch(commands...)
+}
+
+func (m model) loadMarkdownPreview(resourceID, rawURL string) tea.Cmd {
+	return func() tea.Msg {
+		data, err := m.client.FileContent(m.ctx, youtrack.FileContentRequest{URL: rawURL, MaxBytes: maxInlineImageBytes})
+		return markdownPreviewMsg{resourceID: resourceID, url: rawURL, data: data, err: err}
 	}
 }
 

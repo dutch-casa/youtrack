@@ -8,6 +8,7 @@ import (
 )
 
 func (m model) View() string {
+	prefix := clearInlineImages(m.imageProtocol)
 	if m.width == 0 {
 		m.width = 100
 	}
@@ -18,19 +19,19 @@ func (m model) View() string {
 	bodyHeight := max(3, m.height-3)
 	header := m.sectionBar() + "\n"
 	if m.inputMode == modeProject {
-		return header + m.projectSelector(m.width, bodyHeight-1) + "\n" + m.footer()
+		return prefix + header + m.projectSelector(m.width, bodyHeight-1) + "\n" + m.footer()
 	}
 	if m.section == sectionIssues && m.loading {
-		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading issues...") + "\n" + m.footer()
+		return prefix + header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading issues...") + "\n" + m.footer()
 	}
 	if m.section == sectionIssues && m.err != nil {
-		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Error: "+m.err.Error()) + "\n" + m.footer()
+		return prefix + header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Error: "+m.err.Error()) + "\n" + m.footer()
 	}
 	if m.section != sectionIssues && m.resourcesLoading {
-		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading "+m.section.title()+"...") + "\n" + m.footer()
+		return prefix + header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Loading "+m.section.title()+"...") + "\n" + m.footer()
 	}
 	if m.section != sectionIssues && m.resourcesErr != nil {
-		return header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Error: "+m.resourcesErr.Error()) + "\n" + m.footer()
+		return prefix + header + panelStyle.Width(m.width).Height(bodyHeight-1).Render("Error: "+m.resourcesErr.Error()) + "\n" + m.footer()
 	}
 
 	listWidth := max(28, m.width/3)
@@ -38,7 +39,7 @@ func (m model) View() string {
 	contentHeight := max(3, bodyHeight-1)
 	left := m.leftList(listWidth, contentHeight)
 	right := m.rightPane(detailWidth, contentHeight)
-	return header + lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + m.footer()
+	return prefix + header + lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + m.footer()
 }
 
 func (m model) sectionBar() string {
@@ -201,7 +202,8 @@ func (m model) resourcePane(width, height int) string {
 	resource := m.resources[selected]
 	content := resource.Body
 	if resource.BodyMarkdown {
-		content = renderMarkdown(content, max(20, width-4))
+		resourceID := firstNonEmpty(resource.ID, resource.Title)
+		content = renderMarkdownWithImages(content, max(20, width-4), m.markdownPreviews[resourceID], m.imageProtocol)
 	}
 	if strings.TrimSpace(content) == "" {
 		content = titleStyle.Render(resource.Title)
@@ -256,7 +258,8 @@ func (m *model) syncDetailViewport() {
 	resource := m.resources[selected]
 	content := resource.Body
 	if resource.BodyMarkdown {
-		content = renderMarkdown(content, max(20, detailWidth-4))
+		resourceID := firstNonEmpty(resource.ID, resource.Title)
+		content = renderMarkdownWithImages(content, max(20, detailWidth-4), m.markdownPreviews[resourceID], m.imageProtocol)
 	}
 	m.detail.SetContent(content)
 }

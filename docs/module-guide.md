@@ -44,6 +44,7 @@ See also:
 - [0040 Repository Agent Working Contract](adr/0040-repository-agent-working-contract.md)
 - [0041 Terminal Image Attachment Previews](adr/0041-terminal-image-attachment-previews.md)
 - [0042 Issue-Backed Helpdesk Surface](adr/0042-issue-backed-helpdesk-surface.md)
+- [0043 Terminal Markdown Image Previews](adr/0043-terminal-markdown-image-previews.md)
 
 ## `internal/auth`
 
@@ -55,7 +56,7 @@ Role: Callers ask for usable credentials. The module decides whether to use envi
 
 Secret: This module hides the YouTrack REST API wire shape.
 
-Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, knowledge-base, agile-board, helpdesk-project, project, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, authenticated attachment byte downloads, activity category defaults, bearer-token headers, and API error decoding.
+Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, knowledge-base, agile-board, helpdesk-project, project, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, authenticated same-origin file byte downloads, activity category defaults, bearer-token headers, and API error decoding.
 
 ## `internal/ytcli`
 

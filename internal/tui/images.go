@@ -131,14 +131,19 @@ func (m model) renderedAttachmentPreview(attachment youtrack.Attachment, width i
 	if len(preview.Data) == 0 {
 		return ""
 	}
-	imageWidth := min(max(12, width-6), 80)
-	imageHeight := max(6, imageWidth/3)
+	imageWidth, imageHeight := inlineImageSize(width)
 	return renderInlineImage(m.imageProtocol, inlineImage{
 		Name:   attachment.Name,
 		Data:   preview.Data,
 		Width:  imageWidth,
 		Height: imageHeight,
 	})
+}
+
+func inlineImageSize(width int) (int, int) {
+	imageWidth := min(max(12, width-8), 48)
+	imageHeight := min(max(4, imageWidth/4), 10)
+	return imageWidth, imageHeight
 }
 
 type inlineImage struct {
@@ -154,6 +159,17 @@ func renderInlineImage(protocol imageProtocol, image inlineImage) string {
 		return renderITermImage(image)
 	case imageProtocolKitty:
 		return renderKittyImage(image)
+	default:
+		return ""
+	}
+}
+
+func clearInlineImages(protocol imageProtocol) string {
+	switch protocol {
+	case imageProtocolKitty:
+		return "\x1b_Ga=d,d=A\x1b\\"
+	case imageProtocolITerm:
+		return "\x1b[H\x1b[2J"
 	default:
 		return ""
 	}
