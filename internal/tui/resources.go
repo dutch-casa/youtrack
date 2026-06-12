@@ -27,9 +27,8 @@ func articleResources(articles []youtrack.Article) []resourceItem {
 
 func articleBody(article youtrack.Article) string {
 	lines := []string{
-		titleStyle.Render(firstNonEmpty(article.IDReadable, article.ID)),
-		firstNonEmpty(article.Summary, "Untitled article"),
-		strings.TrimSpace(strings.Join(nonEmpty(article.Project.ShortName, article.Reporter.Login), "  ")),
+		"# " + firstNonEmpty(article.Summary, "Untitled article"),
+		strings.TrimSpace(strings.Join(nonEmpty(firstNonEmpty(article.IDReadable, article.ID), article.Project.ShortName, article.Reporter.Login), "  ")),
 		"",
 		trimBlank(article.Content),
 	}
@@ -75,12 +74,17 @@ func projectResources(projects []youtrack.Project) []resourceItem {
 	resources := make([]resourceItem, 0, len(projects))
 	for _, project := range projects {
 		kind := firstNonEmpty(project.ProjectType.Name, "standard")
+		hasDescription := strings.TrimSpace(project.Description) != ""
+		body := projectBody(project, kind)
+		if hasDescription {
+			body = projectMarkdownBody(project, kind)
+		}
 		resources = append(resources, resourceItem{
 			ID:           firstNonEmpty(project.ShortName, project.ID),
 			Title:        firstNonEmpty(project.Name, project.ShortName, project.ID),
 			Subtitle:     strings.TrimSpace(strings.Join(nonEmpty(project.ShortName, kind, project.Leader.Login), "  ")),
-			Body:         projectBody(project, kind),
-			BodyMarkdown: strings.TrimSpace(project.Description) != "",
+			Body:         body,
+			BodyMarkdown: hasDescription,
 		})
 	}
 	return resources
@@ -149,6 +153,22 @@ func projectBody(project youtrack.Project, kind string) string {
 	if strings.TrimSpace(project.Description) != "" {
 		lines = append(lines, "", terminalText(project.Description))
 	}
+	return strings.Join(lines, "\n")
+}
+
+func projectMarkdownBody(project youtrack.Project, kind string) string {
+	lines := []string{
+		"# " + firstNonEmpty(project.Name, project.ShortName, project.ID),
+		"- Short name: " + project.ShortName,
+		"- Type: " + kind,
+	}
+	if project.Leader.Login != "" {
+		lines = append(lines, "- Leader: "+project.Leader.Login)
+	}
+	if project.Archived {
+		lines = append(lines, "- Archived")
+	}
+	lines = append(lines, "", terminalText(project.Description))
 	return strings.Join(lines, "\n")
 }
 

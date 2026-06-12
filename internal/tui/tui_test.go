@@ -420,6 +420,42 @@ func TestMarkdownRenderingFormatsTables(t *testing.T) {
 	}
 }
 
+func TestArticleResourcesUseMarkdownSource(t *testing.T) {
+	resources := articleResources([]youtrack.Article{{
+		IDReadable: "KB-1",
+		Summary:    "Token setup",
+		Content:    "| Key | Value |\n| --- | --- |\n| tab | account&nbsp;security |",
+		Project:    youtrack.Project{ShortName: "SUP"},
+		Reporter:   youtrack.User{Login: "jane"},
+	}})
+	if len(resources) != 1 {
+		t.Fatalf("articleResources() len = %d, want 1", len(resources))
+	}
+	resource := resources[0]
+	if !resource.BodyMarkdown {
+		t.Fatal("BodyMarkdown = false, want true")
+	}
+	if strings.Contains(resource.Body, "\x1b[") {
+		t.Fatalf("article body contains ANSI before markdown rendering: %q", resource.Body)
+	}
+	rendered := stripANSI(renderMarkdown(resource.Body, 72))
+	for _, want := range []string{"Token setup", "KB-1", "SUP", "jane", "tab", "account security"} {
+		if !strings.Contains(rendered, want) {
+			t.Fatalf("rendered article = %q, want %q", rendered, want)
+		}
+	}
+}
+
+func TestFooterUsesBubblesHelp(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	footer := stripANSI(m.footer())
+	for _, want := range []string{"1-6 sections", "j/k move", "o browser", "q quit"} {
+		if !strings.Contains(footer, want) {
+			t.Fatalf("footer = %q, want %q", footer, want)
+		}
+	}
+}
+
 var ansiEscapePattern = regexp.MustCompile(`\x1b\[[0-9;]*m`)
 
 func stripANSI(value string) string {
@@ -518,9 +554,34 @@ func TestCommentsPaneRendersComments(t *testing.T) {
 	})
 	m = updated.(model)
 
-	view := m.View()
-	if !strings.Contains(view, "Comments") || !strings.Contains(view, "jane: Looks fixed") {
+	view := stripANSI(m.View())
+	if !strings.Contains(view, "Comments") || !strings.Contains(view, "jane") || !strings.Contains(view, "Looks fixed") {
 		t.Fatalf("View() = %q, want comment", view)
+	}
+}
+
+func TestCommentsPaneRendersMarkdownTables(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = commentsPane
+	updated, _ = m.Update(commentsMsg{
+		issueID: "ABC-1",
+		comments: []youtrack.Comment{{
+			Text:   "| Key | Value |\n| --- | --- |\n| token | account&nbsp;security |",
+			Author: youtrack.User{Login: "jane"},
+		}},
+	})
+	m = updated.(model)
+
+	view := stripANSI(m.View())
+	if strings.Contains(view, "| --- |") || strings.Contains(view, "&nbsp;") {
+		t.Fatalf("View() = %q, want formatted markdown table", view)
+	}
+	for _, want := range []string{"jane", "Key", "Value", "token", "account security"} {
+		if !strings.Contains(view, want) {
+			t.Fatalf("View() = %q, want comment markdown content %q", view, want)
+		}
 	}
 }
 
@@ -608,7 +669,7 @@ func TestWorkItemsPaneRendersWorkItems(t *testing.T) {
 	})
 	m = updated.(model)
 
-	view := m.View()
+	view := stripANSI(m.View())
 	for _, want := range []string{"Work Items", "1h 30m", "Development", "jane", "2024-01-01", "implementation"} {
 		if !strings.Contains(view, want) {
 			t.Fatalf("View() = %q, want work item field %q", view, want)

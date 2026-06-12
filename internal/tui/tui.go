@@ -6,6 +6,7 @@ import (
 	"io"
 	"strings"
 
+	"github.com/charmbracelet/bubbles/help"
 	"github.com/charmbracelet/bubbles/textinput"
 	"github.com/charmbracelet/bubbles/viewport"
 	tea "github.com/charmbracelet/bubbletea"
@@ -115,6 +116,7 @@ type model struct {
 	pane     pane
 	status   string
 	detail   viewport.Model
+	help     help.Model
 
 	resources         []resourceItem
 	allResources      []resourceItem
@@ -249,6 +251,7 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	projectInput := newPrompt("project> ", "ABC", 128)
 	issueInput := newPrompt("issue> ", "ABC-123", 128)
 	detail := viewport.New(0, 0)
+	helpView := help.New()
 	return model{
 		ctx:           ctx,
 		client:        client,
@@ -256,6 +259,7 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 		loading:       true,
 		section:       sectionIssues,
 		detail:        detail,
+		help:          helpView,
 		commandInput:  commandInput,
 		commentInput:  commentInput,
 		workItemInput: workItemInput,
@@ -279,6 +283,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
 		m.height = msg.Height
+		m.help.Width = msg.Width
 	case tea.MouseMsg:
 		return m.updateMouse(msg)
 	case tea.KeyMsg:

@@ -215,13 +215,13 @@ func (m model) issuePaneContent(width int) string {
 	}
 	switch m.pane {
 	case commentsPane:
-		return m.issueComments()
+		return m.issueComments(width)
 	case linksPane:
 		return m.issueLinks()
 	case activitiesPane:
 		return m.issueActivities()
 	case workItemsPane:
-		return m.issueWorkItems()
+		return m.issueWorkItems(width)
 	case attachmentsPane:
 		return m.issueAttachments()
 	default:
@@ -278,7 +278,7 @@ func (m model) issueDetail(width int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m model) issueComments() string {
+func (m model) issueComments(width int) string {
 	issueID := m.currentIssueID()
 	if m.commentsLoading {
 		return "Loading comments..."
@@ -294,7 +294,7 @@ func (m model) issueComments() string {
 	lines := []string{titleStyle.Render(issueID), titleStyle.Render("Comments"), ""}
 	for _, comment := range comments {
 		author := firstNonEmpty(comment.Author.FullName, comment.Author.Name, comment.Author.Login)
-		lines = append(lines, author+": "+inlineText(comment.Text), "")
+		lines = append(lines, author, renderMarkdown(comment.Text, width), "")
 	}
 	return strings.Join(lines, "\n")
 }
@@ -347,7 +347,7 @@ func (m model) issueActivities() string {
 	return strings.Join(lines, "\n")
 }
 
-func (m model) issueWorkItems() string {
+func (m model) issueWorkItems(width int) string {
 	issueID := m.currentIssueID()
 	if m.workItemsLoading {
 		return "Loading work items..."
@@ -364,7 +364,7 @@ func (m model) issueWorkItems() string {
 	for _, item := range workItems {
 		lines = append(lines, workItemLine(item))
 		if inlineText(item.Text) != "" {
-			lines = append(lines, inlineText(item.Text))
+			lines = append(lines, renderMarkdown(item.Text, width))
 		}
 		lines = append(lines, "")
 	}
@@ -428,14 +428,14 @@ func (m model) footer() string {
 		return errorStyle.Render("work item failed: "+m.workItemErr.Error()) + "  " + helpStyle.Render("/ query  c comment  w work  n/p page  : command  esc cancel  q quit")
 	}
 	if m.status != "" {
-		return statusStyle.Render(m.status) + "  " + helpStyle.Render(m.helpText())
+		return statusStyle.Render(m.status) + "  " + m.help.View(m.keyMap())
 	}
-	return helpStyle.Render(m.helpText())
+	return m.help.View(m.keyMap())
 }
 
-func (m model) helpText() string {
+func (m model) keyMap() tuiKeyMap {
 	if m.section != sectionIssues {
-		return "1-6 sections  / live fuzzy  o browser  click select  wheel list/content  j/k move  pgup/pgdn scroll  r refresh  q quit"
+		return resourceKeyMap()
 	}
-	return "1-6 sections  click select  wheel list/content  / query  P project  i issue  o browser  c comment  w work  n/p page  tab panes  : command  r refresh  q quit"
+	return issueKeyMap()
 }
