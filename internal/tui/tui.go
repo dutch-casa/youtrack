@@ -35,6 +35,14 @@ const (
 	attachmentsPane
 )
 
+type inputMode int
+
+const (
+	modeNavigation inputMode = iota
+	modeCommand
+	modeQuery
+)
+
 func Run(ctx context.Context, client Client, opts Options, out io.Writer) error {
 	model := newModel(ctx, client, opts)
 	program := tea.NewProgram(model, tea.WithOutput(out), tea.WithAltScreen())
@@ -56,12 +64,11 @@ type model struct {
 	status   string
 	detail   viewport.Model
 
-	commandMode    bool
+	inputMode      inputMode
 	commandInput   textinput.Model
 	commandRunning bool
 	commandErr     error
 
-	queryMode  bool
 	queryInput textinput.Model
 
 	comments        map[string][]youtrack.Comment
@@ -154,10 +161,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
-		if m.commandMode {
+		switch m.inputMode {
+		case modeCommand:
 			return m.updateCommandInput(msg)
-		}
-		if m.queryMode {
+		case modeQuery:
 			return m.updateQueryInput(msg)
 		}
 		if updated, ok := m.scrollDetail(msg); ok {
@@ -168,7 +175,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, tea.Quit
 		case ":":
 			if m.currentIssueID() != "" && !m.commandRunning {
-				m.commandMode = true
+				m.inputMode = modeCommand
 				m.commandInput.Reset()
 				m.commandInput.Focus()
 				m.commandErr = nil
@@ -177,7 +184,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		case "/":
 			if !m.loading {
-				m.queryMode = true
+				m.inputMode = modeQuery
 				m.queryInput.Reset()
 				m.queryInput.SetValue(m.opts.Query)
 				m.queryInput.Focus()
@@ -218,12 +225,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.clearPaneCaches()
 			m.status = ""
 			m.commandErr = nil
-			m.commandMode = false
+			m.inputMode = modeNavigation
 			m.commandRunning = false
 			m.commandInput.Blur()
 			m.commandInput.Reset()
 			m.commandInput.SetValue("")
-			m.queryMode = false
 			m.queryInput.Blur()
 			m.queryInput.Reset()
 			m.queryInput.SetValue("")
@@ -317,7 +323,7 @@ func (m model) scrollDetail(msg tea.KeyMsg) (model, bool) {
 func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
-		m.commandMode = false
+		m.inputMode = modeNavigation
 		m.commandInput.Blur()
 		m.commandInput.Reset()
 		m.commandInput.SetValue("")
@@ -330,19 +336,19 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		query := m.commandInput.Value()
 		if query == "" {
 			m.commandErr = nil
-			m.commandMode = false
+			m.inputMode = modeNavigation
 			m.commandInput.Blur()
 			m.commandInput.SetValue("")
 			return m, nil
 		}
 		issueID := m.currentIssueID()
 		if issueID == "" {
-			m.commandMode = false
+			m.inputMode = modeNavigation
 			m.commandInput.Blur()
 			m.commandInput.SetValue("")
 			return m, nil
 		}
-		m.commandMode = false
+		m.inputMode = modeNavigation
 		m.commandInput.Blur()
 		m.commandRunning = true
 		m.commandErr = nil
@@ -357,14 +363,14 @@ func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 func (m model) updateQueryInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
 	case "esc", "ctrl+c":
-		m.queryMode = false
+		m.inputMode = modeNavigation
 		m.queryInput.Blur()
 		m.queryInput.Reset()
 		m.queryInput.SetValue("")
 		return m, nil
 	case "enter":
 		query := strings.TrimSpace(m.queryInput.Value())
-		m.queryMode = false
+		m.inputMode = modeNavigation
 		m.queryInput.Blur()
 		m.queryInput.Reset()
 		m.queryInput.SetValue("")

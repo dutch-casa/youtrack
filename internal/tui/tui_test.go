@@ -226,8 +226,8 @@ func TestCommandModeAppliesYouTrackCommand(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
 	m = updated.(model)
-	if !m.commandMode {
-		t.Fatal("commandMode = false, want true")
+	if m.inputMode != modeCommand {
+		t.Fatalf("inputMode = %v, want modeCommand", m.inputMode)
 	}
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("State Fixed")})
@@ -274,8 +274,8 @@ func TestCommandModeCancels(t *testing.T) {
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(model)
 
-	if m.commandMode || m.commandInput.Value() != "" {
-		t.Fatalf("command mode = %v, input = %q; want canceled", m.commandMode, m.commandInput.Value())
+	if m.inputMode != modeNavigation || m.commandInput.Value() != "" {
+		t.Fatalf("inputMode = %v, command input = %q; want canceled", m.inputMode, m.commandInput.Value())
 	}
 	if cmd != nil {
 		t.Fatal("cancel command != nil")
@@ -312,6 +312,35 @@ func TestCommandModeSupportsCursorEditing(t *testing.T) {
 	}
 }
 
+func TestInputModeIsExclusive(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	m = updated.(model)
+	if m.inputMode != modeCommand {
+		t.Fatalf("inputMode = %v, want modeCommand", m.inputMode)
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	if m.inputMode != modeCommand {
+		t.Fatalf("inputMode = %v, want command prompt to keep focus", m.inputMode)
+	}
+	if m.commandInput.Value() != "/" {
+		t.Fatalf("command input = %q, want slash typed into command prompt", m.commandInput.Value())
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
+	m = updated.(model)
+	if m.inputMode != modeQuery {
+		t.Fatalf("inputMode = %v, want modeQuery", m.inputMode)
+	}
+}
+
 func TestQueryModeReloadsIssues(t *testing.T) {
 	var issueRequests []youtrack.IssueListOptions
 	m := newModel(context.Background(), fakeClient{
@@ -328,8 +357,8 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 
 	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'/'}})
 	m = updated.(model)
-	if !m.queryMode {
-		t.Fatal("queryMode = false, want true")
+	if m.inputMode != modeQuery {
+		t.Fatalf("inputMode = %v, want modeQuery", m.inputMode)
 	}
 	if m.queryInput.Value() != "project: ABC" {
 		t.Fatalf("query input = %q, want current query", m.queryInput.Value())
@@ -341,8 +370,8 @@ func TestQueryModeReloadsIssues(t *testing.T) {
 	if cmd == nil {
 		t.Fatal("query reload command = nil")
 	}
-	if m.queryMode {
-		t.Fatal("queryMode = true, want false")
+	if m.inputMode != modeNavigation {
+		t.Fatalf("inputMode = %v, want modeNavigation", m.inputMode)
 	}
 	if m.opts.Query != "project: DEF #Unresolved" {
 		t.Fatalf("query = %q, want updated query", m.opts.Query)
@@ -377,8 +406,8 @@ func TestQueryModeCancels(t *testing.T) {
 	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
 	m = updated.(model)
 
-	if m.queryMode || m.queryInput.Value() != "" {
-		t.Fatalf("query mode = %v, input = %q; want canceled", m.queryMode, m.queryInput.Value())
+	if m.inputMode != modeNavigation || m.queryInput.Value() != "" {
+		t.Fatalf("inputMode = %v, query input = %q; want canceled", m.inputMode, m.queryInput.Value())
 	}
 	if m.opts.Query != "project: ABC" {
 		t.Fatalf("query = %q, want unchanged query", m.opts.Query)

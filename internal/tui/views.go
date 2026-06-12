@@ -229,10 +229,10 @@ func (m model) issueAttachments() string {
 }
 
 func (m model) footer() string {
-	if m.commandMode {
+	if m.inputMode == modeCommand {
 		return commandStyle.Render(m.commandInput.View())
 	}
-	if m.queryMode {
+	if m.inputMode == modeQuery {
 		return commandStyle.Render(m.queryInput.View())
 	}
 	if m.commandErr != nil {
