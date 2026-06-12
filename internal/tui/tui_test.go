@@ -3,7 +3,6 @@ package tui
 import (
 	"context"
 	"errors"
-	"fmt"
 	"regexp"
 	"strconv"
 	"strings"
@@ -580,16 +579,16 @@ func TestTabCyclesToAttachmentsPane(t *testing.T) {
 	}
 }
 
-func TestTabClearsImageCapableTerminal(t *testing.T) {
+func TestImageClearDoesNotForceFullScreenRepaint(t *testing.T) {
 	m := newModel(context.Background(), fakeClient{}, Options{})
 	m.imageProtocol = imageProtocolKitty
 
 	cmd := m.withImageClear(nil)
-	if cmd == nil {
-		t.Fatal("image clear command = nil")
+	if cmd != nil {
+		t.Fatalf("image clear command = %T, want nil so Bubble Tea does not clear the screen", cmd)
 	}
-	if got := fmt.Sprintf("%T", cmd()); got != "tea.clearScreenMsg" {
-		t.Fatalf("image clear command message = %s, want tea.clearScreenMsg", got)
+	if view := m.View(); !strings.HasPrefix(view, "\x1b_Ga=d,d=A\x1b\\") {
+		t.Fatalf("View() = %q, want Kitty image delete prefix", view)
 	}
 }
 

@@ -971,12 +971,7 @@ func (m model) withImageClear(cmd tea.Cmd) tea.Cmd {
 }
 
 func (m model) imageClearCommand() tea.Cmd {
-	if m.imageProtocol == imageProtocolNone {
-		return nil
-	}
-	return func() tea.Msg {
-		return tea.ClearScreen()
-	}
+	return nil
 }
 
 func (m model) updateMouse(msg tea.MouseMsg) (tea.Model, tea.Cmd) {
