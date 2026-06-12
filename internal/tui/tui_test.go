@@ -16,6 +16,7 @@ type fakeClient struct {
 	attachments []youtrack.Attachment
 	activities  []youtrack.Activity
 	links       []youtrack.IssueLink
+	commands    *[]youtrack.ApplyCommandRequest
 	err         error
 }
 
@@ -37,6 +38,13 @@ func (f fakeClient) Activities(ctx context.Context, opts youtrack.ActivityListOp
 
 func (f fakeClient) IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error) {
 	return f.links, f.err
+}
+
+func (f fakeClient) ApplyCommand(ctx context.Context, req youtrack.ApplyCommandRequest) (youtrack.CommandResult, error) {
+	if f.commands != nil {
+		*f.commands = append(*f.commands, req)
+	}
+	return youtrack.CommandResult{Query: req.Query}, f.err
 }
 
 func TestModelMovementClamps(t *testing.T) {
@@ -202,6 +210,70 @@ func TestActivitiesPaneRendersActivity(t *testing.T) {
 	view := m.View()
 	if !strings.Contains(view, "Activity") || !strings.Contains(view, "jane") || !strings.Contains(view, "Looks fixed") {
 		t.Fatalf("View() = %q, want activity", view)
+	}
+}
+
+func TestCommandModeAppliesYouTrackCommand(t *testing.T) {
+	var commands []youtrack.ApplyCommandRequest
+	m := newModel(context.Background(), fakeClient{commands: &commands}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	m = updated.(model)
+	if !m.commandMode {
+		t.Fatal("commandMode = false, want true")
+	}
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("State Fixed")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEnter})
+	m = updated.(model)
+	if !m.commandRunning {
+		t.Fatal("commandRunning = false, want true")
+	}
+	if cmd == nil {
+		t.Fatal("apply command = nil")
+	}
+
+	msg := cmd().(commandMsg)
+	if msg.issueID != "ABC-1" || msg.query != "State Fixed" {
+		t.Fatalf("commandMsg = %#v", msg)
+	}
+	if len(commands) != 1 || commands[0].IssueID != "ABC-1" || commands[0].Query != "State Fixed" {
+		t.Fatalf("commands = %#v", commands)
+	}
+
+	updated, reload := m.Update(msg)
+	m = updated.(model)
+	if m.commandRunning {
+		t.Fatal("commandRunning = true, want false")
+	}
+	if !strings.Contains(m.status, "Applied State Fixed") {
+		t.Fatalf("status = %q, want applied status", m.status)
+	}
+	if reload == nil {
+		t.Fatal("reload command = nil")
+	}
+}
+
+func TestCommandModeCancels(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{':'}})
+	m = updated.(model)
+	updated, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune("State Fixed")})
+	m = updated.(model)
+	updated, cmd := m.Update(tea.KeyMsg{Type: tea.KeyEsc})
+	m = updated.(model)
+
+	if m.commandMode || m.commandInput != "" {
+		t.Fatalf("command mode = %v, input = %q; want canceled", m.commandMode, m.commandInput)
+	}
+	if cmd != nil {
+		t.Fatal("cancel command != nil")
 	}
 }
 

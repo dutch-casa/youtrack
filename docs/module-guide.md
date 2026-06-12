@@ -15,6 +15,7 @@ See also:
 - [0011 Typed Link Browsing](adr/0011-typed-link-browsing.md)
 - [0012 TUI Workspace Structure](adr/0012-tui-workspace-structure.md)
 - [0013 Raw Body Sources](adr/0013-raw-body-sources.md)
+- [0014 TUI Command Actions](adr/0014-tui-command-actions.md)
 
 ## `internal/auth`
 

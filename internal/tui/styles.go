@@ -7,4 +7,7 @@ var (
 	titleStyle    = lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("12"))
 	selectedStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("0")).Background(lipgloss.Color("12"))
 	helpStyle     = lipgloss.NewStyle().Foreground(lipgloss.Color("8"))
+	commandStyle  = lipgloss.NewStyle().Foreground(lipgloss.Color("15")).Background(lipgloss.Color("4"))
+	statusStyle   = lipgloss.NewStyle().Foreground(lipgloss.Color("2"))
+	errorStyle    = lipgloss.NewStyle().Foreground(lipgloss.Color("9"))
 )

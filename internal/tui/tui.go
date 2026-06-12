@@ -19,6 +19,7 @@ type Client interface {
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
 	IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error)
+	ApplyCommand(ctx context.Context, req youtrack.ApplyCommandRequest) (youtrack.CommandResult, error)
 }
 
 type pane int
@@ -49,6 +50,12 @@ type model struct {
 	loading  bool
 	err      error
 	pane     pane
+	status   string
+
+	commandMode    bool
+	commandInput   string
+	commandRunning bool
+	commandErr     error
 
 	comments        map[string][]youtrack.Comment
 	commentsLoading bool
@@ -96,6 +103,12 @@ type linksMsg struct {
 	err     error
 }
 
+type commandMsg struct {
+	issueID string
+	query   string
+	err     error
+}
+
 func newModel(ctx context.Context, client Client, opts Options) model {
 	if opts.Top <= 0 {
 		opts.Top = 50
@@ -122,9 +135,19 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
+		if m.commandMode {
+			return m.updateCommandInput(msg)
+		}
 		switch msg.String() {
 		case "q", "ctrl+c", "esc":
 			return m, tea.Quit
+		case ":":
+			if m.currentIssueID() != "" && !m.commandRunning {
+				m.commandMode = true
+				m.commandInput = ""
+				m.commandErr = nil
+				m.status = ""
+			}
 		case "tab":
 			m.pane = m.pane.next()
 			return m.withSelectedPaneLoading()
@@ -161,6 +184,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.links = make(map[string][]youtrack.IssueLink)
 			m.linksErr = nil
 			m.linksLoading = false
+			m.status = ""
+			m.commandErr = nil
+			m.commandMode = false
+			m.commandRunning = false
 			return m, m.loadIssues
 		}
 	case issuesMsg:
@@ -201,6 +228,59 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil {
 			m.links[msg.issueID] = msg.links
+		}
+	case commandMsg:
+		m.commandRunning = false
+		m.commandErr = msg.err
+		if msg.err != nil {
+			m.status = ""
+			return m, nil
+		}
+		m.status = "Applied " + msg.query + " to " + msg.issueID
+		m.commandInput = ""
+		delete(m.comments, msg.issueID)
+		delete(m.attachments, msg.issueID)
+		delete(m.activities, msg.issueID)
+		delete(m.links, msg.issueID)
+		return m, m.loadIssues
+	}
+	return m, nil
+}
+
+func (m model) updateCommandInput(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	switch msg.String() {
+	case "esc", "ctrl+c":
+		m.commandMode = false
+		m.commandInput = ""
+		m.commandErr = nil
+		return m, nil
+	case "enter":
+		if m.commandRunning {
+			return m, nil
+		}
+		if m.commandInput == "" {
+			m.commandErr = nil
+			m.commandMode = false
+			return m, nil
+		}
+		issueID := m.currentIssueID()
+		if issueID == "" {
+			m.commandMode = false
+			return m, nil
+		}
+		query := m.commandInput
+		m.commandMode = false
+		m.commandRunning = true
+		m.commandErr = nil
+		m.status = "Applying " + query + "..."
+		return m, m.applyCommand(issueID, query)
+	case "backspace", "ctrl+h":
+		if len(m.commandInput) > 0 {
+			m.commandInput = m.commandInput[:len(m.commandInput)-1]
+		}
+	default:
+		if msg.Type == tea.KeyRunes {
+			m.commandInput += string(msg.Runes)
 		}
 	}
 	return m, nil
@@ -316,6 +396,16 @@ func (m model) loadLinks(issueID string) tea.Cmd {
 	return func() tea.Msg {
 		links, err := m.client.IssueLinks(m.ctx, youtrack.IssueLinkListOptions{IssueID: issueID, Top: 42})
 		return linksMsg{issueID: issueID, links: links, err: err}
+	}
+}
+
+func (m model) applyCommand(issueID, query string) tea.Cmd {
+	return func() tea.Msg {
+		_, err := m.client.ApplyCommand(m.ctx, youtrack.ApplyCommandRequest{
+			IssueID: issueID,
+			Query:   query,
+		})
+		return commandMsg{issueID: issueID, query: query, err: err}
 	}
 }
 

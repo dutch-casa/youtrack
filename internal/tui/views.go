@@ -17,17 +17,17 @@ func (m model) View() string {
 
 	bodyHeight := max(3, m.height-3)
 	if m.loading {
-		return panelStyle.Width(m.width).Height(bodyHeight).Render("Loading issues...") + "\n" + footer()
+		return panelStyle.Width(m.width).Height(bodyHeight).Render("Loading issues...") + "\n" + m.footer()
 	}
 	if m.err != nil {
-		return panelStyle.Width(m.width).Height(bodyHeight).Render("Error: "+m.err.Error()) + "\n" + footer()
+		return panelStyle.Width(m.width).Height(bodyHeight).Render("Error: "+m.err.Error()) + "\n" + m.footer()
 	}
 
 	listWidth := max(28, m.width/3)
 	detailWidth := max(40, m.width-listWidth-4)
 	left := m.issueList(listWidth, bodyHeight)
 	right := m.issuePane(detailWidth, bodyHeight)
-	return lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + footer()
+	return lipgloss.JoinHorizontal(lipgloss.Top, left, right) + "\n" + m.footer()
 }
 
 func (m model) issueList(width, height int) string {
@@ -179,6 +179,15 @@ func (m model) issueAttachments(width, height int) string {
 	return panelStyle.Width(width).Height(height).Render(truncateBlock(strings.Join(lines, "\n"), width-4, height-2))
 }
 
-func footer() string {
-	return helpStyle.Render("j/k move  tab details/comments/links/activity/attachments  g/G top/bottom  r refresh  q quit")
+func (m model) footer() string {
+	if m.commandMode {
+		return commandStyle.Render(": " + m.commandInput)
+	}
+	if m.commandErr != nil {
+		return errorStyle.Render("command failed: "+m.commandErr.Error()) + "  " + helpStyle.Render(": command  esc cancel  q quit")
+	}
+	if m.status != "" {
+		return statusStyle.Render(m.status) + "  " + helpStyle.Render(": command  tab panes  r refresh  q quit")
+	}
+	return helpStyle.Render("j/k move  tab details/comments/links/activity/attachments  : command  g/G top/bottom  r refresh  q quit")
 }
