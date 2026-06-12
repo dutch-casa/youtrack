@@ -49,6 +49,7 @@ yt links list ABC-123
 yt commands apply ABC-123 --query 'State Fixed' --comment 'Fixed in main'
 yt raw /api/admin/projects
 yt raw /api/issues --method POST --body-file ./issue.json
+yt raw /api/custom --method PATCH --content-type text/plain --body 'plain text'
 ```
 
 JSON is the default. Use `--format table` for human-readable output.
@@ -57,7 +58,7 @@ JSON is the default. Use `--format table` for human-readable output.
 
 For long generated text, description and comment commands accept explicit file/stdin sources such as `--description-file`, `--description-stdin`, `--text-file`, `--text-stdin`, `--comment-file`, and `--comment-stdin`.
 
-For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large JSON.
+For long raw REST payloads, use `--body-file` or `--body-stdin` instead of shell-escaping large bodies. Raw requests default body content to `application/json`; use `--content-type` when a long-tail endpoint expects a different media type.
 
 ## Interactive Mode
 

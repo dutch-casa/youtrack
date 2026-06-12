@@ -383,6 +383,43 @@ func TestIssueLinksRequestShape(t *testing.T) {
 	}
 }
 
+func TestRawRequestContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/api/custom" {
+			t.Fatalf("path = %s, want raw path", r.URL.Path)
+		}
+		if r.Method != http.MethodPatch {
+			t.Fatalf("method = %s, want PATCH", r.Method)
+		}
+		if got := r.Header.Get("Content-Type"); got != "text/plain" {
+			t.Fatalf("Content-Type = %q, want text/plain", got)
+		}
+		body, err := io.ReadAll(r.Body)
+		if err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if string(body) != "plain text" {
+			t.Fatalf("body = %q, want plain text", string(body))
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL, "perm:test", server.Client())
+	data, err := client.Raw(context.Background(), RawRequest{
+		Method:      http.MethodPatch,
+		Path:        "/api/custom",
+		ContentType: "text/plain",
+		Body:        strings.NewReader("plain text"),
+	})
+	if err != nil {
+		t.Fatalf("Raw() error = %v", err)
+	}
+	if string(data) != `{"ok":true}` {
+		t.Fatalf("Raw() = %s, want raw response", data)
+	}
+}
+
 func TestAPIError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, `{"error_description":"bad token"}`, http.StatusUnauthorized)
@@ -441,6 +478,12 @@ func TestClientValidatesInputs(t *testing.T) {
 	}
 	if _, err := client.IssueLinks(context.Background(), IssueLinkListOptions{}); err == nil {
 		t.Fatal("IssueLinks() error = nil, want issue id validation")
+	}
+	if _, err := client.Raw(context.Background(), RawRequest{Path: "/api/issues"}); err == nil {
+		t.Fatal("Raw() error = nil, want method validation")
+	}
+	if _, err := client.Raw(context.Background(), RawRequest{Method: http.MethodGet}); err == nil {
+		t.Fatal("Raw() error = nil, want path validation")
 	}
 }
 

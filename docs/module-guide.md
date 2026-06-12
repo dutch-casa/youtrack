@@ -19,6 +19,7 @@ See also:
 - [0015 Charm Text Input](adr/0015-charm-text-input.md)
 - [0016 Scrollable TUI Panes](adr/0016-scrollable-tui-panes.md)
 - [0017 TUI Issue List Window](adr/0017-tui-issue-list-window.md)
+- [0018 Raw Request Content Type](adr/0018-raw-request-content-type.md)
 
 ## `internal/auth`
 

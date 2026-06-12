@@ -321,6 +321,33 @@ func TestRawReadsBodyFromStdin(t *testing.T) {
 	}
 }
 
+func TestRawSendsCustomContentType(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if got := r.Header.Get("Content-Type"); got != "text/plain" {
+			t.Fatalf("Content-Type = %q, want text/plain", got)
+		}
+		body := new(bytes.Buffer)
+		if _, err := body.ReadFrom(r.Body); err != nil {
+			t.Fatalf("read body: %v", err)
+		}
+		if body.String() != "plain text" {
+			t.Fatalf("body = %q, want plain text", body.String())
+		}
+		_, _ = w.Write([]byte(`{"ok":true}`))
+	}))
+	defer server.Close()
+	t.Setenv("YOUTRACK_URL", server.URL)
+	t.Setenv("YOUTRACK_TOKEN", "perm:test")
+
+	err := Execute(context.Background(), []string{
+		"--config", filepath.Join(t.TempDir(), "missing.json"),
+		"raw", "/api/custom", "-X", "POST", "--content-type", "text/plain", "--body", "plain text",
+	}, strings.NewReader(""), &bytes.Buffer{}, &bytes.Buffer{})
+	if err != nil {
+		t.Fatalf("Execute() error = %v", err)
+	}
+}
+
 func TestRawRejectsMultipleBodySources(t *testing.T) {
 	err := Execute(context.Background(), []string{
 		"raw", "/api/issues", "--body", `{}`, "--body-stdin",

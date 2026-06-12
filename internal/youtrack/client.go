@@ -225,6 +225,13 @@ type IssueLinkListOptions struct {
 	Skip    int
 }
 
+type RawRequest struct {
+	Method      string
+	Path        string
+	ContentType string
+	Body        io.Reader
+}
+
 type APIError struct {
 	StatusCode int
 	Message    string
@@ -549,13 +556,24 @@ func (c *Client) ApplyCommand(ctx context.Context, req ApplyCommandRequest) (Com
 	return result, err
 }
 
-func (c *Client) Raw(ctx context.Context, method, path string, body io.Reader) (json.RawMessage, error) {
-	req, err := c.newRequest(ctx, strings.ToUpper(method), path, nil, body)
+func (c *Client) Raw(ctx context.Context, raw RawRequest) (json.RawMessage, error) {
+	if strings.TrimSpace(raw.Method) == "" {
+		return nil, errors.New("raw request method is required")
+	}
+	if strings.TrimSpace(raw.Path) == "" {
+		return nil, errors.New("raw request path is required")
+	}
+
+	req, err := c.newRequest(ctx, strings.ToUpper(raw.Method), raw.Path, nil, raw.Body)
 	if err != nil {
 		return nil, err
 	}
-	if body != nil {
-		req.Header.Set("Content-Type", "application/json")
+	if raw.Body != nil {
+		contentType := raw.ContentType
+		if contentType == "" {
+			contentType = "application/json"
+		}
+		req.Header.Set("Content-Type", contentType)
 	}
 	resp, err := c.httpClient.Do(req)
 	if err != nil {

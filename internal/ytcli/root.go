@@ -757,12 +757,13 @@ func (a *app) commandsCommand() *cobra.Command {
 
 func (a *app) rawCommand() *cobra.Command {
 	var method string
+	var contentType string
 	var body string
 	var bodyFile string
 	var bodyStdin bool
 	cmd := &cobra.Command{
 		Use:   "raw PATH",
-		Short: "Call a YouTrack REST path and print raw JSON",
+		Short: "Call a YouTrack REST path and print the raw response",
 		Args:  cobra.ExactArgs(1),
 		RunE: func(cmd *cobra.Command, args []string) error {
 			var reader io.Reader
@@ -783,7 +784,12 @@ func (a *app) rawCommand() *cobra.Command {
 			if err != nil {
 				return err
 			}
-			data, err := client.Raw(cmd.Context(), method, args[0], reader)
+			data, err := client.Raw(cmd.Context(), youtrack.RawRequest{
+				Method:      method,
+				Path:        args[0],
+				ContentType: contentType,
+				Body:        reader,
+			})
 			if err != nil {
 				return err
 			}
@@ -792,9 +798,10 @@ func (a *app) rawCommand() *cobra.Command {
 		},
 	}
 	cmd.Flags().StringVarP(&method, "method", "X", "GET", "HTTP method")
-	cmd.Flags().StringVar(&body, "body", "", "JSON request body")
-	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read JSON request body from file")
-	cmd.Flags().BoolVar(&bodyStdin, "body-stdin", false, "read JSON request body from stdin")
+	cmd.Flags().StringVar(&contentType, "content-type", "application/json", "request body content type")
+	cmd.Flags().StringVar(&body, "body", "", "request body")
+	cmd.Flags().StringVar(&bodyFile, "body-file", "", "read request body from file")
+	cmd.Flags().BoolVar(&bodyStdin, "body-stdin", false, "read request body from stdin")
 	return cmd
 }
 
