@@ -278,6 +278,11 @@ type UploadAttachmentsRequest struct {
 	Files   []AttachmentFile
 }
 
+type AttachmentContentRequest struct {
+	Attachment Attachment
+	MaxBytes   int64
+}
+
 type ActivityListOptions struct {
 	IssueID    string
 	Categories []string
@@ -620,6 +625,40 @@ func (c *Client) UploadAttachments(ctx context.Context, req UploadAttachmentsReq
 	return attachments, err
 }
 
+func (c *Client) AttachmentContent(ctx context.Context, req AttachmentContentRequest) ([]byte, error) {
+	rawURL := strings.TrimSpace(req.Attachment.ThumbnailURL)
+	if rawURL == "" {
+		rawURL = strings.TrimSpace(req.Attachment.URL)
+	}
+	if rawURL == "" {
+		return nil, errors.New("attachment url is required")
+	}
+	endpoint, err := c.attachmentEndpoint(rawURL)
+	if err != nil {
+		return nil, err
+	}
+	httpReq, err := http.NewRequestWithContext(ctx, http.MethodGet, endpoint, nil)
+	if err != nil {
+		return nil, fmt.Errorf("create attachment request: %w", err)
+	}
+	httpReq.Header.Set("Accept", "*/*")
+	httpReq.Header.Set("Authorization", "Bearer "+c.token)
+
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, fmt.Errorf("download attachment: %w", err)
+	}
+	defer resp.Body.Close()
+	data, err := readLimited(resp.Body, req.MaxBytes)
+	if err != nil {
+		return nil, err
+	}
+	if resp.StatusCode < 200 || resp.StatusCode >= 300 {
+		return nil, decodeAPIError(resp.StatusCode, data)
+	}
+	return data, nil
+}
+
 func (c *Client) Activities(ctx context.Context, opts ActivityListOptions) ([]Activity, error) {
 	if strings.TrimSpace(opts.IssueID) == "" {
 		return nil, errors.New("issue id is required")
@@ -863,6 +902,52 @@ func (c *Client) newRequest(ctx context.Context, method, path string, values url
 	req.Header.Set("Accept", "application/json")
 	req.Header.Set("Authorization", "Bearer "+c.token)
 	return req, nil
+}
+
+func (c *Client) attachmentEndpoint(rawURL string) (string, error) {
+	if c.baseURL == "" {
+		return "", errors.New("youtrack base url is empty")
+	}
+	base, err := url.Parse(c.baseURL)
+	if err != nil {
+		return "", fmt.Errorf("parse base url: %w", err)
+	}
+	endpoint, err := url.Parse(rawURL)
+	if err != nil {
+		return "", fmt.Errorf("parse attachment url: %w", err)
+	}
+	if !endpoint.IsAbs() {
+		endpoint.Scheme = base.Scheme
+		endpoint.Host = base.Host
+		if !strings.HasPrefix(rawURL, "/") {
+			basePath := strings.TrimRight(base.Path, "/")
+			relativePath := strings.TrimLeft(endpoint.Path, "/")
+			endpoint.Path = basePath + "/" + relativePath
+		}
+	}
+	if endpoint.Scheme != base.Scheme || endpoint.Host != base.Host {
+		return "", errors.New("attachment url must use the YouTrack base origin")
+	}
+	basePath := strings.TrimRight(base.Path, "/")
+	if basePath != "" && endpoint.Path != basePath && !strings.HasPrefix(endpoint.Path, basePath+"/") {
+		return "", errors.New("attachment url must be under the YouTrack base path")
+	}
+	return endpoint.String(), nil
+}
+
+func readLimited(reader io.Reader, maxBytes int64) ([]byte, error) {
+	if maxBytes <= 0 {
+		maxBytes = 4 << 20
+	}
+	limited := io.LimitReader(reader, maxBytes+1)
+	data, err := io.ReadAll(limited)
+	if err != nil {
+		return nil, fmt.Errorf("read attachment: %w", err)
+	}
+	if int64(len(data)) > maxBytes {
+		return nil, fmt.Errorf("attachment exceeds %d byte preview limit", maxBytes)
+	}
+	return data, nil
 }
 
 func (c *Client) do(req *http.Request, dst any) error {

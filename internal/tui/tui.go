@@ -30,6 +30,7 @@ type Client interface {
 	HelpdeskProjects(ctx context.Context, opts youtrack.PageOptions) ([]youtrack.Project, error)
 	Comments(ctx context.Context, issueID string) ([]youtrack.Comment, error)
 	Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error)
+	AttachmentContent(ctx context.Context, req youtrack.AttachmentContentRequest) ([]byte, error)
 	Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error)
 	IssueLinks(ctx context.Context, opts youtrack.IssueLinkListOptions) ([]youtrack.IssueLink, error)
 	WorkItems(ctx context.Context, opts youtrack.WorkItemListOptions) ([]youtrack.WorkItem, error)
@@ -155,8 +156,10 @@ type model struct {
 	commentsErr     error
 
 	attachments        map[string][]youtrack.Attachment
+	attachmentPreviews map[string]map[string]attachmentPreview
 	attachmentsLoading bool
 	attachmentsErr     error
+	imageProtocol      imageProtocol
 
 	activities        map[string][]youtrack.Activity
 	activitiesLoading bool
@@ -202,6 +205,13 @@ type attachmentsMsg struct {
 	issueID     string
 	attachments []youtrack.Attachment
 	err         error
+}
+
+type attachmentPreviewMsg struct {
+	issueID      string
+	attachmentID string
+	data         []byte
+	err          error
 }
 
 type activitiesMsg struct {
@@ -253,24 +263,26 @@ func newModel(ctx context.Context, client Client, opts Options) model {
 	detail := viewport.New(0, 0)
 	helpView := help.New()
 	return model{
-		ctx:           ctx,
-		client:        client,
-		opts:          opts,
-		loading:       true,
-		section:       sectionIssues,
-		detail:        detail,
-		help:          helpView,
-		commandInput:  commandInput,
-		commentInput:  commentInput,
-		workItemInput: workItemInput,
-		queryInput:    queryInput,
-		projectInput:  projectInput,
-		issueInput:    issueInput,
-		comments:      make(map[string][]youtrack.Comment),
-		attachments:   make(map[string][]youtrack.Attachment),
-		activities:    make(map[string][]youtrack.Activity),
-		workItems:     make(map[string][]youtrack.WorkItem),
-		links:         make(map[string][]youtrack.IssueLink),
+		ctx:                ctx,
+		client:             client,
+		opts:               opts,
+		loading:            true,
+		section:            sectionIssues,
+		detail:             detail,
+		help:               helpView,
+		commandInput:       commandInput,
+		commentInput:       commentInput,
+		workItemInput:      workItemInput,
+		queryInput:         queryInput,
+		projectInput:       projectInput,
+		issueInput:         issueInput,
+		comments:           make(map[string][]youtrack.Comment),
+		attachments:        make(map[string][]youtrack.Attachment),
+		attachmentPreviews: make(map[string]map[string]attachmentPreview),
+		imageProtocol:      detectImageProtocol(),
+		activities:         make(map[string][]youtrack.Activity),
+		workItems:          make(map[string][]youtrack.WorkItem),
+		links:              make(map[string][]youtrack.IssueLink),
 	}
 }
 
@@ -437,7 +449,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		if msg.err == nil {
 			m.attachments[msg.issueID] = msg.attachments
+			return m, m.loadAttachmentPreviews(msg.issueID, msg.attachments)
 		}
+	case attachmentPreviewMsg:
+		if _, ok := m.attachmentPreviews[msg.issueID]; !ok {
+			m.attachmentPreviews[msg.issueID] = make(map[string]attachmentPreview)
+		}
+		m.attachmentPreviews[msg.issueID][msg.attachmentID] = attachmentPreview{Data: msg.data, Err: msg.err}
 	case activitiesMsg:
 		if m.currentIssueID() == msg.issueID {
 			m.activitiesLoading = false
@@ -476,6 +494,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		clearInput(&m.commandInput)
 		delete(m.comments, msg.issueID)
 		delete(m.attachments, msg.issueID)
+		delete(m.attachmentPreviews, msg.issueID)
 		delete(m.activities, msg.issueID)
 		delete(m.links, msg.issueID)
 		return m, m.loadIssues
@@ -1035,6 +1054,7 @@ func (m *model) clearPaneCaches() {
 	m.commentsErr = nil
 	m.commentsLoading = false
 	m.attachments = make(map[string][]youtrack.Attachment)
+	m.attachmentPreviews = make(map[string]map[string]attachmentPreview)
 	m.attachmentsErr = nil
 	m.attachmentsLoading = false
 	m.activities = make(map[string][]youtrack.Activity)
@@ -1151,6 +1171,34 @@ func (m model) loadAttachments(issueID string) tea.Cmd {
 	return func() tea.Msg {
 		attachments, err := m.client.Attachments(m.ctx, youtrack.AttachmentListOptions{IssueID: issueID, Top: 42})
 		return attachmentsMsg{issueID: issueID, attachments: attachments, err: err}
+	}
+}
+
+func (m model) loadAttachmentPreviews(issueID string, attachments []youtrack.Attachment) tea.Cmd {
+	if m.imageProtocol == imageProtocolNone {
+		return nil
+	}
+	commands := make([]tea.Cmd, 0, len(attachments))
+	for _, attachment := range attachments {
+		if !isImageAttachment(attachment) {
+			continue
+		}
+		attachmentID := attachmentPreviewID(attachment)
+		if attachmentID == "" {
+			continue
+		}
+		if _, ok := m.attachmentPreviews[issueID][attachmentID]; ok {
+			continue
+		}
+		commands = append(commands, m.loadAttachmentPreview(issueID, attachmentID, attachment))
+	}
+	return tea.Batch(commands...)
+}
+
+func (m model) loadAttachmentPreview(issueID, attachmentID string, attachment youtrack.Attachment) tea.Cmd {
+	return func() tea.Msg {
+		data, err := m.client.AttachmentContent(m.ctx, youtrack.AttachmentContentRequest{Attachment: attachment, MaxBytes: maxInlineImageBytes})
+		return attachmentPreviewMsg{issueID: issueID, attachmentID: attachmentID, data: data, err: err}
 	}
 }
 

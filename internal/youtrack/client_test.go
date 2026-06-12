@@ -421,6 +421,67 @@ func TestUploadAttachmentsRequestBody(t *testing.T) {
 	}
 }
 
+func TestAttachmentContentUsesThumbnailURL(t *testing.T) {
+	const image = "png bytes"
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/youtrack/api/files/preview.png" {
+			t.Fatalf("path = %s, want thumbnail path", r.URL.Path)
+		}
+		if got := r.Header.Get("Authorization"); got != "Bearer perm:test" {
+			t.Fatalf("authorization = %q, want bearer token", got)
+		}
+		if got := r.Header.Get("Accept"); got != "*/*" {
+			t.Fatalf("accept = %q, want bytes accept header", got)
+		}
+		_, _ = w.Write([]byte(image))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/youtrack", "perm:test", server.Client())
+	data, err := client.AttachmentContent(context.Background(), AttachmentContentRequest{
+		Attachment: Attachment{ThumbnailURL: "/youtrack/api/files/preview.png"},
+		MaxBytes:   1024,
+	})
+	if err != nil {
+		t.Fatalf("AttachmentContent() error = %v", err)
+	}
+	if string(data) != image {
+		t.Fatalf("AttachmentContent() = %q, want image bytes", string(data))
+	}
+}
+
+func TestAttachmentContentResolvesBaseRelativeURL(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/youtrack/api/files/preview.png" {
+			t.Fatalf("path = %s, want base-relative thumbnail path", r.URL.Path)
+		}
+		_, _ = w.Write([]byte("preview"))
+	}))
+	defer server.Close()
+
+	client := NewClient(server.URL+"/youtrack", "perm:test", server.Client())
+	_, err := client.AttachmentContent(context.Background(), AttachmentContentRequest{
+		Attachment: Attachment{ThumbnailURL: "api/files/preview.png"},
+		MaxBytes:   1024,
+	})
+	if err != nil {
+		t.Fatalf("AttachmentContent() error = %v", err)
+	}
+}
+
+func TestAttachmentContentRejectsCrossOriginURL(t *testing.T) {
+	client := NewClient("https://youtrack.example.com", "perm:test", nil)
+	_, err := client.AttachmentContent(context.Background(), AttachmentContentRequest{
+		Attachment: Attachment{URL: "https://evil.example.com/file.png"},
+	})
+	if err == nil {
+		t.Fatal("AttachmentContent() error = nil, want cross-origin rejection")
+	}
+	if !strings.Contains(err.Error(), "base origin") {
+		t.Fatalf("AttachmentContent() error = %q, want base origin", err.Error())
+	}
+}
+
 func TestActivitiesRequestShape(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/api/issues/ABC-1/activities" {

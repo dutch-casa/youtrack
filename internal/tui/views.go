@@ -223,7 +223,7 @@ func (m model) issuePaneContent(width int) string {
 	case workItemsPane:
 		return m.issueWorkItems(width)
 	case attachmentsPane:
-		return m.issueAttachments()
+		return m.issueAttachments(width)
 	default:
 		return m.issueDetail(width)
 	}
@@ -368,7 +368,7 @@ func (m model) issueWorkItems(width int) string {
 	return strings.Join(lines, "\n")
 }
 
-func (m model) issueAttachments() string {
+func (m model) issueAttachments(width int) string {
 	issueID := m.currentIssueID()
 	if m.attachmentsLoading {
 		return "Loading attachments..."
@@ -389,9 +389,12 @@ func (m model) issueAttachments() string {
 		details := strings.TrimSpace(strings.Join(nonEmpty(size, kind, author), "  "))
 		if details != "" {
 			lines = append(lines, inlineText(attachment.Name)+"  "+details)
-			continue
+		} else {
+			lines = append(lines, inlineText(attachment.Name))
 		}
-		lines = append(lines, inlineText(attachment.Name))
+		if preview := m.renderedAttachmentPreview(attachment, width); preview != "" {
+			lines = append(lines, preview)
+		}
 	}
 	return strings.Join(lines, "\n")
 }

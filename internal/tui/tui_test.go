@@ -14,21 +14,22 @@ import (
 )
 
 type fakeClient struct {
-	issues        []youtrack.Issue
-	issueRequests *[]youtrack.IssueListOptions
-	projects      []youtrack.Project
-	users         []youtrack.User
-	articles      []youtrack.Article
-	agiles        []youtrack.Agile
-	comments      []youtrack.Comment
-	commentAdds   *[]commentAdd
-	attachments   []youtrack.Attachment
-	activities    []youtrack.Activity
-	workItems     []youtrack.WorkItem
-	workItemAdds  *[]workItemAdd
-	links         []youtrack.IssueLink
-	commands      *[]youtrack.ApplyCommandRequest
-	err           error
+	issues            []youtrack.Issue
+	issueRequests     *[]youtrack.IssueListOptions
+	projects          []youtrack.Project
+	users             []youtrack.User
+	articles          []youtrack.Article
+	agiles            []youtrack.Agile
+	comments          []youtrack.Comment
+	commentAdds       *[]commentAdd
+	attachments       []youtrack.Attachment
+	attachmentContent []byte
+	activities        []youtrack.Activity
+	workItems         []youtrack.WorkItem
+	workItemAdds      *[]workItemAdd
+	links             []youtrack.IssueLink
+	commands          *[]youtrack.ApplyCommandRequest
+	err               error
 }
 
 type commentAdd struct {
@@ -82,6 +83,10 @@ func (f fakeClient) AddComment(ctx context.Context, issueID, text string) (youtr
 
 func (f fakeClient) Attachments(ctx context.Context, opts youtrack.AttachmentListOptions) ([]youtrack.Attachment, error) {
 	return f.attachments, f.err
+}
+
+func (f fakeClient) AttachmentContent(ctx context.Context, req youtrack.AttachmentContentRequest) ([]byte, error) {
+	return f.attachmentContent, f.err
 }
 
 func (f fakeClient) Activities(ctx context.Context, opts youtrack.ActivityListOptions) ([]youtrack.Activity, error) {
@@ -628,6 +633,59 @@ func TestAttachmentsPaneRendersAttachments(t *testing.T) {
 	}
 	if !strings.Contains(view, "2.0 KiB") || !strings.Contains(view, "image/png") {
 		t.Fatalf("View() = %q, want attachment metadata", view)
+	}
+}
+
+func TestAttachmentsPaneRendersITermImagePreview(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = attachmentsPane
+	m.imageProtocol = imageProtocolITerm
+	m.attachments["ABC-1"] = []youtrack.Attachment{{
+		ID:       "att-1",
+		Name:     "screenshot.png",
+		MimeType: "image/png",
+	}}
+	m.attachmentPreviews["ABC-1"] = map[string]attachmentPreview{
+		"att-1": {Data: []byte("png bytes")},
+	}
+
+	view := m.View()
+	if !strings.Contains(view, "\x1b]1337;File=") {
+		t.Fatalf("View() = %q, want iTerm inline image escape", view)
+	}
+}
+
+func TestAttachmentsPaneSkipsPreviewWithoutImageProtocol(t *testing.T) {
+	m := newModel(context.Background(), fakeClient{}, Options{})
+	updated, _ := m.Update(issuesMsg{issues: []youtrack.Issue{{IDReadable: "ABC-1", Summary: "One"}}})
+	m = updated.(model)
+	m.pane = attachmentsPane
+	m.imageProtocol = imageProtocolNone
+	m.attachments["ABC-1"] = []youtrack.Attachment{{
+		ID:       "att-1",
+		Name:     "screenshot.png",
+		MimeType: "image/png",
+	}}
+	m.attachmentPreviews["ABC-1"] = map[string]attachmentPreview{
+		"att-1": {Data: []byte("png bytes")},
+	}
+
+	view := m.View()
+	if strings.Contains(view, "\x1b]1337;File=") || strings.Contains(view, "\x1b_G") {
+		t.Fatalf("View() = %q, want text-only attachment output", view)
+	}
+}
+
+func TestKittyImageRenderingChunksLargePayloads(t *testing.T) {
+	payload := strings.Repeat("x", 5000)
+	rendered := renderInlineImage(imageProtocolKitty, inlineImage{Name: "large.png", Data: []byte(payload), Width: 40, Height: 12})
+	if strings.Count(rendered, "\x1b_G") < 2 {
+		t.Fatalf("rendered kitty image = %q, want chunked graphics commands", rendered)
+	}
+	if !strings.Contains(rendered, "m=1;") || !strings.Contains(rendered, "m=0;") {
+		t.Fatalf("rendered kitty image = %q, want continuation markers", rendered)
 	}
 }
 

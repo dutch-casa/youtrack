@@ -42,6 +42,7 @@ See also:
 - [0038 Agent Capability Map](adr/0038-agent-capability-map.md)
 - [0039 Dual Command Name Registration](adr/0039-dual-command-name-registration.md)
 - [0040 Repository Agent Working Contract](adr/0040-repository-agent-working-contract.md)
+- [0041 Terminal Image Attachment Previews](adr/0041-terminal-image-attachment-previews.md)
 
 ## `internal/auth`
 
@@ -53,7 +54,7 @@ Role: Callers ask for usable credentials. The module decides whether to use envi
 
 Secret: This module hides the YouTrack REST API wire shape.
 
-Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, knowledge-base, agile-board, helpdesk-project, project, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, activity category defaults, bearer-token headers, and API error decoding.
+Role: Callers use typed operations for common issue, comment, attachment, link, activity-history, knowledge-base, agile-board, helpdesk-project, project, and user actions. The module owns endpoint paths, query fields, custom-field value projection, multipart upload shape, authenticated attachment byte downloads, activity category defaults, bearer-token headers, and API error decoding.
 
 ## `internal/ytcli`
 
@@ -71,4 +72,4 @@ Role: Commands ask it to resolve one named text value. It enforces mutual exclus
 
 Secret: This module hides the terminal interaction state for browsing YouTrack.
 
-Role: It owns keyboard and mouse bindings, layout, section state, selection state, lazy-loaded issue panes, shared resource browsing, fzf-style local filtering, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, resource projection owns how typed YouTrack entities become list/detail rows, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals and color meanings, evidence projection owns cached issue evidence summaries, Markdown/formatting code owns terminal-safe text projection, Bubbles help owns keybinding footer presentation, and styles own the restrained YouTrack-like terminal skin.
+Role: It owns keyboard and mouse bindings, layout, section state, selection state, lazy-loaded issue panes, shared resource browsing, fzf-style local filtering, prompt modes for human issue actions, and rendering for the lazygit-style interactive mode. Model/update code owns terminal state transitions, resource projection owns how typed YouTrack entities become list/detail rows, prompt lifecycle code owns text prompt defaults and focus/clear behavior, view files own pane rendering, field projection owns which YouTrack custom fields become first-screen issue signals and color meanings, evidence projection owns cached issue evidence summaries, Markdown/formatting code owns terminal-safe text projection, image rendering owns terminal image protocol detection and escape-code projection, Bubbles help owns keybinding footer presentation, and styles own the restrained YouTrack-like terminal skin.
